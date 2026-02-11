@@ -1,0 +1,402 @@
+library(tidyverse)
+data <- read.csv("SQM_Readings_For_R.csv")
+dat_structured <- data |>
+group_by(Category, Date, Location)
+dat_dates <- dat_structured |>
+summarise(Date = unique(Date)) |>
+filter(Date != "")
+sqm1_mean <- aggregate(SQM1~Location,data, FUN = mean)
+sqm2_mean <- aggregate(SQM2~Location,data, FUN = mean)
+pre_sqm_means <- right_join(sqm1_mean,sqm2_mean)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2)
+print(sqm_means)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+filter(Category == "CMU")
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+filter(Category == "CMU") |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2)
+print(sqm_means)
+View(sqm_means)
+library(tidyverse)
+data <- read.csv("SQM_Readings_For_R.csv")
+dat_structured <- data |>
+group_by(Category, Date, Location)
+dat_dates <- dat_structured |>
+summarise(Date = unique(Date)) |>
+filter(Date != "")
+sqm1_mean <- aggregate(SQM1~Location,data, FUN = mean)
+sqm2_mean <- aggregate(SQM2~Location,data, FUN = mean)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2)
+print(sqm_means)
+dat_structured <- data |>
+group_by(Category, Date, Location)
+dat_dates <- dat_structured |>
+summarise(Date = unique(Date)) |>
+filter(Date != "")
+sqm1_mean <- aggregate(SQM1~Location,data, FUN = mean)
+sqm2_mean <- aggregate(SQM2~Location,data, FUN = mean)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2)
+print(sqm_means)
+#CMU
+cmu_sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+filter(Category == "CMU") |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2)
+print(cmu_sqm_means)
+#Rimrock
+rim_sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+filter(Category == "Rimrock") |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2)
+print(rim_sqm_means)
+#Apartment
+apt_sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+filter(Category == "Rock_Slide") |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2)
+print(apt_sqm_means)
+pre_sqm_means <- right_join(sqm1_mean,sqm2_mean)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2)
+print(sqm_means)
+reframe(Category,Date,Location,SQM1,SQM2,SQM)
+print(sqm_means)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+mutate(SQM = mean(SQM1,SQM2))
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+mutate(SQM = mean(SQM1,SQM2))|>
+reframe(Category,Date,Location,SQM1,SQM2,SQM)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+summarise(SQM = mean(SQM1,SQM2))|>
+reframe(Category,Date,Location,SQM1,SQM2,SQM)
+print(sqm_means)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+summarise(SQM = mean(SQM1,SQM2))|>
+reframe(Category,Date,Location,SQM1,SQM2,SQM)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2,SQM) |>
+summarise(SQM = mean(SQM1,SQM2))
+print(sqm_means)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2,SQM) |>
+mutate(SQM = mean(SQM1,SQM2))
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+mutate(SQM = mean(SQM1,SQM2))
+print(sqm_means)
+rlang::last_trace()
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+SQM = mean(SQM1,SQM2)
+print(sqm_means)
+library(dplyr)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+mutate(SQM_Mean = rowMeans(SQM1,SQM2))
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+mutate(SQM_Mean = rowMeans(select(SQM1,SQM2)))
+print(sqm_means)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+mutate(SQM_Mean = rowMeans(select(.,SQM1,SQM2)))
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+mutate(SQM_Mean = rowMeans(select(SQM1,SQM2)))
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+mutate(SQM_Mean = rowMeans(data_frame[,c("col1","col2")]))
+?rowMeans
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+select(SQM1,SQM2)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+select(SQM1,SQM2) |>
+mutate(SQM = rowMeans())
+print(sqm_means)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+select(SQM1,SQM2) |>
+mutate(SQM = rowMeans(sqm_means))
+print(sqm_means)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+select(SQM1,SQM2) |>
+mutate(SQM = rowMeans(sqm_means)) |>
+reframe(Category,Date,Location,SQM)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+#select(SQM1,SQM2) |>
+mutate(SQM = rowMeans(sqm_means)) |>
+reframe(Category,Date,Location,SQM)
+print(sqm_means)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+#select(SQM1,SQM2) |>
+mutate(SQM = rowMeans(sqm_means)) |>
+reframe(Category,Date,Location,SQM)
+View(data)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category,Date,Location) |>
+#select(SQM1,SQM2) |>
+mutate(SQM = rowMeans(sqm_means)) |>
+reframe(Category,Date,Location,SQM)
+print(sqm_means)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+#select(SQM1,SQM2) |>
+mutate(SQM = rowMeans(sqm_means)) |>
+reframe(Category,Date,Location,SQM)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Date) |>
+#select(SQM1,SQM2) |>
+mutate(SQM = rowMeans(sqm_means)) |>
+reframe(Category,Date,Location,SQM)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Date) |>
+#select(SQM1,SQM2) |>
+mutate(SQM = rowMeans(sqm_means)) |>
+reframe(Category,Date,Location,SQM)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Date,Location) |>
+#select(SQM1,SQM2) |>
+mutate(SQM = rowMeans(sqm_means)) |>
+reframe(Category,Date,Location,SQM)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+select(SQM1,SQM2) |>
+mutate(SQM = rowMeans(sqm_means)) |>
+reframe(Category,Date,Location,SQM)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+select(SQM1,SQM2) |>
+mutate(SQM = rowMeans(sqm_means))
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+select(SQM1,SQM2) |>
+mutate(SQM = rowMeans()) |>
+reframe(Category,Date,Location,SQM)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+select(SQM1,SQM2) |>
+mutate(SQM = rowMeans(sqm_means)) |>
+reframe(Category,Date,Location,SQM)
+sqm1_mean <- aggregate(SQM1~Location,data, FUN = mean)
+sqm2_mean <- aggregate(SQM2~Location,data, FUN = mean)
+pre_sqm_means <- right_join(sqm1_mean,sqm2_mean)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+mutate(SQM_Mean = rowMeans(data_frame[,c("col1","col2")]))
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+select(SQM1,SQM2) |>
+mutate(SQM = rowMeans(sqm_means)) |>
+reframe(Category,Date,Location,SQM)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+select(SQM1,SQM2) |>
+mutate(SQM = rowMeans(sqm_means))
+print(sqm_means)
+total_sqm_mean <- sqm_means |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+select(SQM1,SQM2) |>
+mutate(SQM = rowMeans(sqm_means)) |>
+right_join(sqm_means,total_sqm_mean) |>
+reframe(Category,Date,Location,SQM1,SQM2)
+sqm_means <- right_join(pre_sqm_means,dat_dates)
+total_sqm_mean <- sqm_means |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+select(SQM1,SQM2) |>
+mutate(SQM = rowMeans(sqm_means)) |>
+right_join(sqm_means,total_sqm_mean) |>
+reframe(Category,Date,Location,SQM1,SQM2)
+total_sqm_mean <- sqm_means |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+select(SQM1,SQM2) |>
+mutate(SQM = rowMeans(total_sqm_mean)) |>
+right_join(sqm_means,total_sqm_mean) |>
+reframe(Category,Date,Location,SQM1,SQM2)
+total_sqm_mean <- sqm_means |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+select(SQM1,SQM2) |>
+mutate(SQM = rowMeans(,)) |>
+right_join(sqm_means,total_sqm_mean) |>
+reframe(Category,Date,Location,SQM1,SQM2)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+select(SQM1,SQM2) |>
+mutate(SQM = rowMeans(sqm_means))
+print(sqm_means)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+select(SQM1,SQM2) |>
+mutate(SQM = rowMeans(sqm_means))
+sqm1_mean <- aggregate(SQM1~Location,data, FUN = mean)
+sqm2_mean <- aggregate(SQM2~Location,data, FUN = mean)
+pre_sqm_means <- right_join(sqm1_mean,sqm2_mean)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+select(SQM1,SQM2) |>
+mutate(SQM = rowMeans(sqm_means))
+calced_sqm_means <- right_join(pre_sqm_means,dat_dates)
+structured_sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+select(SQM1,SQM2)
+print(structured_sqm_means)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+mutate(SQM = rowMeans(structured_sqm_means)) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+print(sqm_means)
+total_sqm_mean <- sqm_means |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+select(SQM1,SQM2) |>
+mutate(SQM = rowMeans(sqm_means)) |>
+right_join(sqm_means,total_sqm_mean) |>
+reframe(Category,Date,Location,SQM1,SQM2)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+mutate(SQM = rowMeans(structured_sqm_means)) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+print(sqm_means)
+structured_sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+select(SQM1,SQM2)
+print(structured_sqm_means)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+mutate(SQM = rowMeans(structured_sqm_means)) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+print(sqm_means)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+mutate(SQM = rowMeans(structured_sqm_means)) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+print(sqm_means)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+mutate(SQM = rowMeans(structured_sqm_means)) |>
+reframe(Category,Date,Location,SQM1,SQM2)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+mutate(SQM = rowMeans(structured_sqm_means)) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2)
+print(sqm_means)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+mutate(SQM = rowMeans(structured_sqm_means)) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2,SQM)
+print(sqm_means)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+mutate(SQM = rowMeans(structured_sqm_means)) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2,SQM)
+print(sqm_means)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+mutate(SQM = rowMeans(structured_sqm_means)) |>
+reframe(Category,Date,Location,SQM1,SQM2)
+structured_sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+select(SQM1,SQM2)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+mutate(SQM = rowMeans(structured_sqm_means)) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2,SQM)
+print(sqm_means)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+mutate(SQM = rowMeans(structured_sqm_means)) |>
+#group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2,SQM)
+print(sqm_means)
+View(sqm_means)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+mutate(SQM = rowMeans(structured_sqm_means)) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2,SQM)
+print(sqm_means)
+View(sqm_means)
+structured_sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+select(SQM1,SQM2)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+mutate(SQM = rowMeans(structured_sqm_means)) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2,SQM)
+print(sqm_means)
+print(sqm_means)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+group_by(Category) |>
+mutate(SQM = rowMeans(structured_sqm_means)) |>
+reframe(Category,Date,Location,SQM1,SQM2,SQM)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+mutate(SQM = rowMeans(structured_sqm_means)) |>
+reframe(Category,Date,Location,SQM1,SQM2,SQM)
+print(sqm_means)
+structured_sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+reframe(Category,Date,Location,SQM1,SQM2) |>
+select(SQM1,SQM2)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+mutate(SQM = rowMeans(structured_sqm_means)) |>
+reframe(Category,Date,Location,SQM1,SQM2,SQM)
+print(sqm_means)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+mutate(SQM = rowMeans(structured_sqm_means)) |>
+group_by(Category)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+mutate(SQM = rowMeans(structured_sqm_means)) |>
+group_by(Category) |>
+reframe(Category,Date,Location,SQM1,SQM2,SQM)
+print(sqm_means)
+sqm_means <- right_join(pre_sqm_means,dat_dates) |>
+mutate(SQM = rowMeans(structured_sqm_means)) |>
+group_by(Category,Date) |>
+reframe(Category,Date,Location,SQM1,SQM2,SQM)
+print(sqm_means)
+final_sqm_mean <- right_join(pre_sqm_means,dat_dates) |>
+mutate(SQM = rowMeans(structured_sqm_means)) |>
+group_by(Category,Date) |>
+reframe(Category,Date,Location,SQM1,SQM2,SQM)
+print(final_sqm_mean)
+View(final_sqm_mean)
+git config --global user.name "Your Name"
+renv::activate()

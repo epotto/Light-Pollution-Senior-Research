@@ -1,0 +1,32 @@
+{
+    "type": [
+        2,
+        2,
+        0,
+        1,
+        2,
+        2,
+        2,
+        0,
+        1,
+        2,
+        0,
+        1,
+        2
+    ],
+    "data": [
+        "\nR version 4.4.1 (2024-06-14 ucrt) -- \"Race for Your Life\"\nCopyright (C) 2024 The R Foundation for Statistical Computing\nPlatform: x86_64-w64-mingw32/x64\n\nR is free software and comes with ABSOLUTELY NO WARRANTY.\nYou are welcome to redistribute it under certain conditions.\nType 'license()' or 'licence()' for distribution details.\n\n  Natural language support but running in an English locale\n\nR is a collaborative project with many contributors.\nType 'contributors()' for more information and\n'citation()' on ho",
+        "w to cite R or R packages in publications.\n\nType 'demo()' for some demos, 'help()' for on-line help, or\n'help.start()' for an HTML browser interface to help.\nType 'q()' to quit R.\n\n",
+        "> ",
+        "renv::activate()",
+        "\nrenv: Project Environments for R\n\nWelcome to renv! It looks like this is your first time using renv.\nThis is a one-time message, briefly describing some of renv's functionality.\n\nrenv will write to files within the active project folder, including:\n\n  - A folder 'renv' in the project directory, and\n  - A lockfile called 'renv.lock' in the project directory.\n\nIn particular, projects using renv will normally use a private, per-project\nR library, in which new packages will be installed. This project library i",
+        "s\nisolated from other R libraries on your system.\n\nIn addition, renv will update files within your project directory, including:\n\n  - .gitignore\n  - .Rbuildignore\n  - .Rprofile\n\nFinally, renv maintains a local cache of data on the filesystem, located at:\n\n  - \"C:/Users/eotto/AppData/Local/R/cache/R/renv\"\n\nThis path can be customized: please see the documentation in `\u001B]8;;x-r-help:renv::paths\u0007?renv::paths\u001B]8;;\u0007`.\n\nPlease read the introduction vignette with `vignette(\"renv\")` for more information.\nYou can bro",
+        "wse the package documentation online at https://rstudio.github.io/renv/.\n",
+        "Do you want to proceed? [y/N]: ",
+        "renv::snapshot()",
+        "- Unrecognized response: please enter 'y' or 'n', or type Ctrl + C to cancel.\n",
+        "Do you want to proceed? [y/N]: ",
+        "y",
+        "\n- \"C:/Users/eotto/AppData/Local/R/cache/R/renv\" has been created.\n\u001BG3;Restarting R session...\u001Bg"
+    ]
+}

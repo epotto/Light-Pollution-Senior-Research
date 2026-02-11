@@ -1,0 +1,37 @@
+# This script will be used to do data analysis for the SQM at CMU specifically.
+
+# Ethan Otto
+
+library(tidyverse)
+
+data <- read.csv("SQM_Readings_CMU.csv")
+
+dat_structured <- data |>
+  group_by(Date, Location)
+
+dat_unique <- dat_structured |>
+  summarise(Date = unique(Date), Weather = unique(Weather),
+            Cloud_Cover = unique(Cloud_Cover)) |>
+  filter(Date != "")
+
+
+sqm1_mean <- aggregate(SQM.1~Location,data = data, FUN = mean) |>
+  right_join(dat_unique)
+print(sqm1_mean)
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
