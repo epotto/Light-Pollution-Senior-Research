@@ -35,7 +35,7 @@ manual_filter <- function(data, i){
   } else{
     max_col <- 18 # 18 is subject to change; this is just the max number of variables I have in Excel at this time. This may increase or decrease based on future needs!
   }
-  dat_filt <- data[,1:max_col] |>
+  dat_filt <- data[, 1:max_col] |>
     group_by(Location,Date,Time, Category) |>
     mutate(Date_Time = mdy_hms(paste(Date,Time))) |>
     filter(!is.na(Date_Time))
@@ -44,72 +44,33 @@ manual_filter <- function(data, i){
 
 dat_filt <- manual_filter(data, FALSE)
 
-
-# Attempting to get the averages and stuff manually for faster computation.
-
-# Correct code outside of function: 
-
-
-# This should work:
-
-pts_per_instance <- seq(from = 1, to = nrow(dat_filt), by = 6)
-date_time <- dat_filt[pts_per_instance,]
-
-
-avg1 <- c()
-
- sqm1_mean <- for(i in 1:nrow(date_time)){
-  avg1[i] = mean(dat_filt$SQM1[((6*(i-1)) + 1: (6*(i-1)+ 6))]) # This will suck to interpret later, but it is just going from 1 to 6, and taking into account how many iterations there already have been (6*(i-1))
-}
-
-i <- 1
-
-
-mutate(date_time, SQM = avg1)
-
-mean(dat_filt$SQM1[1:6])
-
-mean(dat_filt$SQM1[((6*(i-1)) + 1) : (6*(i-1) + 6)])
-
-nrow(dat_filt) / 6
-
-
-sqm1_mean
-
-is.na(date_time$SQM2[414])
-
-
 # Functions:
 
 
-n_count <- function(data, n, i, func){
+n_count <- function(data, n, i_group, func){
   n <- as.integer(n)
-  i <- as.integer(i)
+  i_group <- as.integer(i_group)
   n_count <- 6
-  i_count <- n*(i-1)
+  i_count <- n*(i_group - 1)
   if(func == "SQM1"){
     for(i in 1:6){
-      #i_count <- i_count +  1
-      if(is.na(as.integer(data$SQM1[i_count + i]) == TRUE)){
+      if(is.na(data$SQM1[i_count + i]) == TRUE){
         n_count <- n_count - 1
       } else{
         n_count <- n_count
-      }
-    }
-    #return(n_count)
+      }   }
   } else if(func == "SQM2"){
     for(i in 1:6){
-      #i_count <- i_count +  1
-      if(is.na(as.integer(data$SQM2[i_count + i]) == TRUE)){
+      if(is.na(data$SQM2[i_count + i]) == TRUE){
         n_count <- n_count - 1
       } else{
         n_count <- n_count
       }
-    }
-    #return(n_count)
-  }
+    } }
   return(n_count)
 }
+
+
 
 
 avg_func <- function(data, date_time, func){
@@ -119,45 +80,66 @@ avg_func <- function(data, date_time, func){
       avg[[i]] <- (as.numeric(data$SQM1[i]) + as.numeric(data$SQM2[i]))/ 2 
     } } else if(func == "sd"){ # for the variance/sd stuff:
       for(i in 1:nrow(date_time)){
+        i_group <- as.integer(i)
         # Need to put in more accurate error:
         #reframe(variance2 = SQM2 / sqrt(6)) |>
         # total_variance <- sqrt(variance^2 + variance2^2 + 2*(0.1)^2)/2
-        avg[[i]] <- (as.numeric(data$sd1[i]) + as.numeric(data$sd2[i]))/ 2 
+        n1 <- n_count(data, 6, i_group, "SQM1")
+        n2 <- n_count(data, 6, i_group, "SQM2")
+        avg[[i]] <- sqrt( (as.numeric(data$sd1[i])^2 / sqrt(n1)) + (as.numeric(data$sd2[i])^2 / sqrt(n2)) + 2*(0.1)^2 ) / 2 
       } }
   return(avg)
 }
 
-avg <- (as.numeric(sqm_means$SQM1[1]) + as.numeric(sqm_means$SQM2[1]))/ 2 
+#n_count(data, 6, 1, "SQM1")
+
+#avg <- (as.numeric(sqm_means$SQM1[1]) + as.numeric(sqm_means$SQM2[1]))/ 2 
 
 # function for inputting lists to mutate()
 
-mutate_func <- function(date_time, n, func){
+# Need to actually compute sd stuff...
+
+mutate_func <- function(date_time, n, device, func){
   n <- as.integer(n)
   n_sd <- 0
   avg <- c()
-  if(func == 1){
+  var <- c()
+  if(device == "SQM1"){
     for(i in 1:nrow(date_time)){
       avg[[i]] <-  mean(dat_filt$SQM1[((n*(i-1)) + 1: (n*(i-1)+ n))], na.rm = TRUE) 
+      i_count <- as.integer(i)
+      n_sd <- n_count(dat_filt, n, i, "SQM1")
+      sdv <- c()
+      for(i in 1:6){
+        sdv[[i]] <- (dat_filt$SQM1[n*(i_count-1) + i] - avg[[i_count]])^2 
+      } 
+      var[[i_count]] <- (sum(as.numeric(sdv[((n*(i_count-1)) + 1: (n*(i_count-1)+ n))])) / n_sd)
       }
-    }else if(func ==2){
+    }else if(device == "SQM2"){
       for(i in 1:nrow(date_time)){
         avg[[i]] <- mean(dat_filt$SQM2[((n*(i-1)) + 1: (n*(i-1)+ n))], na.rm = TRUE) }
-      
-    }else if(func ==3){
-      for(i in 1:nrow(date_time)){
-        i <- as.integer(i)
-        n_sd <- n_count(dat_filt, n, i, "SQM1")
-        avg[[i]] <- sd(dat_filt$SQM1[((n*(i-1)) + 1: (n*(i-1)+ n))], na.rm = TRUE) / sqrt(n_sd)}
-    }else if(func ==4){
-      for(i in 1:nrow(date_time)){
-        i <- as.integer(i)
-        n_sd <- n_count(dat_filt, n, i, "SQM2")
-        avg[[i]] <- sd(dat_filt$SQM2[((n*(i-1)) + 1: (n*(i-1)+ n))], na.rm = TRUE) / sqrt(n_sd)}
+      i_count <- as.integer(i)
+      n_sd <- n_count(dat_filt, n, i, "SQM2")
+      sdv <- c()
+      for(i in 1:6){
+        sdv[[i]] <- (dat_filt$SQM2[n*(i_count-1) + i] - avg[[i_count]])^2 
+      } 
+      var[[i_count]] <- (sum(as.numeric(sdv[((n*(i_count-1)) + 1: (n*(i_count-1)+ n))]), na.rm = TRUE) / n_sd)
     }
-  return(t(avg))
+  if(func == "mean"){
+    return(t(avg))
+  } else if(func == "sd"){
+    return(t(var))
+  }
 }
 
+#sum(sd(((6*(69-1)) + 1: (6*(69-1)+ 6)), na.rm = TRUE), na.rm = TRUE) / sqrt(5)
 
+
+
+#sd(dat_filt$SQM2[6*(69-1)+1:6*(69-1) + 6], na.rm = TRUE)
+
+#sd(dat_filt$SQM1[6*(69-1)+1:6*(69-1) + 6], na.rm = TRUE)
 
 #Putting avg and sd into manual_calculations:
 
@@ -173,10 +155,10 @@ manual_calculations <- function(data){
   # The code below works!
   
   sqm_means <- date |>
-    mutate(SQM1 = t(mutate_func(date_time,6,1))) |>
-    mutate(SQM2 = t(mutate_func(date_time,6,2))) |>
-    mutate(sd1 = t(mutate_func(date_time,6,3))) |>
-    mutate(sd2 = t(mutate_func(date_time,6,4)))
+    mutate(SQM1 = t(mutate_func(date_time,6,"SQM1", "mean"))) |>
+    mutate(SQM2 = t(mutate_func(date_time,6,"SQM2", "mean"))) |>
+    mutate(sd1 = t(mutate_func(date_time,6,"SQM1", "sd"))) |>
+    mutate(sd2 = t(mutate_func(date_time,6,"SQM2", "sd")))
   #return(sqm_means)
   
   sqm_mean <- date |>
@@ -191,8 +173,6 @@ manual_calculations <- function(data){
    #return(sqm_total_info)
 }
 
-#reframe(variance2 = SQM2 / sqrt(6)) |>
-# total_variance <- sqrt(variance^2 + variance2^2 + 2*(0.1)^2)/2
 
 sqm_mean <- manual_calculations(data)
 
