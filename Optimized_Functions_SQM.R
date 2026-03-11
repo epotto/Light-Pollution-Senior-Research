@@ -77,7 +77,7 @@ avg_func <- function(data, date_time, func){
   avg <- c()
   if(func == "mean"){
     for(i in 1:nrow(date_time)){
-      avg[[i]] <- (as.numeric(data$SQM1[i]) + as.numeric(data$SQM2[i]))/ 2 
+      avg[[i]] <- mean(as.numeric(data$SQM1[i]), as.numeric(data$SQM2[i])) 
     } } else if(func == "sd"){ # for the variance/sd stuff:
       for(i in 1:nrow(date_time)){
         i_group <- as.integer(i)
@@ -86,7 +86,7 @@ avg_func <- function(data, date_time, func){
         # total_variance <- sqrt(variance^2 + variance2^2 + 2*(0.1)^2)/2
         n1 <- n_count(data, 6, i_group, "SQM1")
         n2 <- n_count(data, 6, i_group, "SQM2")
-        avg[[i]] <- sqrt( (as.numeric(data$sd1[i])^2 / sqrt(n1)) + (as.numeric(data$sd2[i])^2 / sqrt(n2)) + 2*(0.1)^2 ) / 2 
+        avg[[i]] <- sqrt( (as.numeric(data$sd1[i])^2) + (as.numeric(data$sd2[i])^2) + 2*(0.1)^2 ) / 2 
       } }
   return(avg)
 }
@@ -106,40 +106,66 @@ mutate_func <- function(date_time, n, device, func){
   var <- c()
   if(device == "SQM1"){
     for(i in 1:nrow(date_time)){
-      avg[[i]] <-  mean(dat_filt$SQM1[((n*(i-1)) + 1: (n*(i-1)+ n))], na.rm = TRUE) 
-      i_count <- as.integer(i)
+      avg[[i]] <-  mean(dat_filt$SQM1[((n*(i-1) + 1): (n*(i-1) + n))], na.rm = TRUE) 
       n_sd <- n_count(dat_filt, n, i, "SQM1")
-      sdv <- c()
-      for(i in 1:6){
-        sdv[[i]] <- (dat_filt$SQM1[n*(i_count-1) + i] - avg[[i_count]])^2 
-      } 
-      var[[i_count]] <- (sum(as.numeric(sdv[((n*(i_count-1)) + 1: (n*(i_count-1)+ n))])) / n_sd)
+      var[[i]] <- sd(dat_filt$SQM1[((n*(i-1) + 1): (n*(i-1) + n))], na.rm = TRUE) / sqrt(n_sd)
+      # sdv <- c()
+      # for(i in 1:6){
+      #   sdv[[i]] <- (dat_filt$SQM1[n*(i_count-1) + i] - avg[[i_count]])^2 
+      # } 
+      # var[[i_count]] <- (sum(as.numeric(sdv[((n*(i_count-1)) + 1: (n*(i_count-1)+ n))])) / n_sd)
       }
     }else if(device == "SQM2"){
       for(i in 1:nrow(date_time)){
-        avg[[i]] <- mean(dat_filt$SQM2[((n*(i-1)) + 1: (n*(i-1)+ n))], na.rm = TRUE) }
-      i_count <- as.integer(i)
-      n_sd <- n_count(dat_filt, n, i, "SQM2")
-      sdv <- c()
-      for(i in 1:6){
-        sdv[[i]] <- (dat_filt$SQM2[n*(i_count-1) + i] - avg[[i_count]])^2 
-      } 
-      var[[i_count]] <- (sum(as.numeric(sdv[((n*(i_count-1)) + 1: (n*(i_count-1)+ n))]), na.rm = TRUE) / n_sd)
+        avg[[i]] <- mean(dat_filt$SQM2[((n*(i-1) + 1): (n*(i-1) + n))], na.rm = TRUE) 
+        n_sd <- n_count(dat_filt, n, i, "SQM2")
+        var[[i]] <- sd(dat_filt$SQM2[((n*(i-1) + 1): (n*(i-1) + n))], na.rm = TRUE) / sqrt(n_sd)
+        }
+      # sdv <- c()
+      # for(i in 1:6){
+      #   sdv[[i]] <- (dat_filt$SQM2[n*(i_count-1) + i] - avg[[i_count]])^2 
+      # } 
+      # var[[i_count]] <- (sum(as.numeric(sdv[((n*(i_count-1)) + 1: (n*(i_count-1)+ n))]), na.rm = TRUE) / n_sd)
     }
   if(func == "mean"){
-    return(t(avg))
+    return(avg)
   } else if(func == "sd"){
-    return(t(var))
+    return(var)
   }
 }
 
+t(mutate_func(date_time, 6, "SQM1", "mean"))
+t(mutate_func(date_time, 6, "SQM2", "mean"))
+
+
+
+avg_func(sqm_means, date_time, "mean")
+
+#(n*(i-1) + 1): (n*(i-1) + n)
+
 #sum(sd(((6*(69-1)) + 1: (6*(69-1)+ 6)), na.rm = TRUE), na.rm = TRUE) / sqrt(5)
+dat_filt$SQM1[55:60]
+
+(6*(i-1) + 1): (6*(i-1) + 6)
+
+dat_filt$SQM1[(6*(i-1) + 1): (6*(i-1) + 6)]
+dat_filt$SQM2[(6*(i-1) + 1): (6*(i-1) + 6)]
+
+i <- 10
 
 
+sqm1_test <- mean(dat_filt$SQM1[(6*(i-1) + 1): (6*(i-1) + 6)], na.rm = TRUE)
+sqm2_test <- mean(dat_filt$SQM2[(6*(i-1) + 1): (6*(i-1) + 6)], na.rm = TRUE)
+sqm_mean_test <- mean(sqm1_test,sqm2_test)
+sqm_mean_test
 
-#sd(dat_filt$SQM2[6*(69-1)+1:6*(69-1) + 6], na.rm = TRUE)
+sd1_test <- sd(dat_filt$SQM2[(6*(i-1) + 1): (6*(i-1) + 6)], na.rm = TRUE)
 
-#sd(dat_filt$SQM1[6*(69-1)+1:6*(69-1) + 6], na.rm = TRUE)
+sd2_test <- sd(dat_filt$SQM1[(6*(i-1) + 1): (6*(i-1) + 6)], na.rm = TRUE)
+
+sd_total_test <- sqrt( (as.numeric(sd1_test)^2) + (as.numeric(sd2_test)^2) + 2*(0.1)^2 ) / 2 
+sd_total_test
+
 
 #Putting avg and sd into manual_calculations:
 
@@ -155,10 +181,10 @@ manual_calculations <- function(data){
   # The code below works!
   
   sqm_means <- date |>
-    mutate(SQM1 = t(mutate_func(date_time,6,"SQM1", "mean"))) |>
-    mutate(SQM2 = t(mutate_func(date_time,6,"SQM2", "mean"))) |>
-    mutate(sd1 = t(mutate_func(date_time,6,"SQM1", "sd"))) |>
-    mutate(sd2 = t(mutate_func(date_time,6,"SQM2", "sd")))
+    mutate(SQM1 = mutate_func(date_time,6,"SQM1", "mean")) |>
+    mutate(SQM2 = mutate_func(date_time,6,"SQM2", "mean")) |>
+    mutate(sd1 = mutate_func(date_time,6,"SQM1", "sd")) |>
+    mutate(sd2 = mutate_func(date_time,6,"SQM2", "sd"))
   #return(sqm_means)
   
   sqm_mean <- date |>
