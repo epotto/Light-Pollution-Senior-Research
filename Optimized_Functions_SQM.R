@@ -21,6 +21,10 @@ names(data)
 
 
 
+# I would like to use "Extra_Variables" as a sort of junk column. I want to just have a string that can be read with if statements so I don't have to make columns for hyper-specific purposes. (i.e. Delta Field having a greenhouse and stadium light input)
+
+
+
 manual_filter <- function(data, i){
   # Start by getting for loops and the like to be able to do this manually.
   if(i == TRUE){
@@ -33,9 +37,9 @@ manual_filter <- function(data, i){
         max_col <- readline("Enter the max column number you would like to use (Please exclude leading columns): ")
       } } 
   } else{
-    max_col <- 18 # 18 is subject to change; this is just the max number of variables I have in Excel at this time. This may increase or decrease based on future needs!
+    max_col <- 27 # 27 is subject to change; this is just the max number of variables I have in Excel at this time. This may increase or decrease based on future needs!
   }
-  dat_filt <- data[, 1:max_col] |>
+  dat_filt <- data[,1:max_col] |>
     group_by(Location,Date,Time, Category) |>
     mutate(Date_Time = mdy_hms(paste(Date,Time))) |>
     filter(!is.na(Date_Time))
@@ -44,129 +48,113 @@ manual_filter <- function(data, i){
 
 dat_filt <- manual_filter(data, FALSE)
 
+
+# Attempting to get the averages and stuff manually for faster computation.
+
+# Correct code outside of function: 
+
+
+# This should work:
+
+pts_per_instance <- seq(from = 1, to = nrow(dat_filt), by = 6)
+date_time <- dat_filt[pts_per_instance,]
+
+
+avg1 <- c()
+
+ sqm1_mean <- for(i in 1:nrow(date_time)){
+  avg1[i] = mean(dat_filt$SQM1[((6*(i-1)) + 1: (6*(i-1)+ 6))]) # This will suck to interpret later, but it is just going from 1 to 6, and taking into account how many iterations there already have been (6*(i-1))
+}
+
+i <- 1
+
+
+mutate(date_time, SQM = avg1)
+
+mean(dat_filt$SQM1[1:6])
+
+mean(dat_filt$SQM1[((6*(i-1)) + 1) : (6*(i-1) + 6)])
+
+nrow(dat_filt) / 6
+
+
+sqm1_mean
+
+is.na(date_time$SQM2[414])
+
+
 # Functions:
 
 
-n_count <- function(data, n, i_group, func){
+n_count <- function(data, n, i, func){
   n <- as.integer(n)
-  i_group <- as.integer(i_group)
+  i <- as.integer(i)
   n_count <- 6
-  i_count <- n*(i_group - 1)
+  i_count <- n*(i-1)
   if(func == "SQM1"){
     for(i in 1:6){
-      if(is.na(data$SQM1[i_count + i]) == TRUE){
+      if(is.na(data$SQM1[i_count + i] == TRUE)){
         n_count <- n_count - 1
-      } else{
-        n_count <- n_count
-      }   }
+      }
+    }
   } else if(func == "SQM2"){
     for(i in 1:6){
-      if(is.na(data$SQM2[i_count + i]) == TRUE){
+      if(is.na(data$SQM2[i_count + i] == TRUE)){
         n_count <- n_count - 1
-      } else{
-        n_count <- n_count
       }
-    } }
+    }
+  }
   return(n_count)
 }
 
-
-mean(as.numeric(sqm_mean$SQM1[10]), as.numeric(sqm_mean$SQM2[10]))
-
-(as.numeric(sqm_mean$SQM1[10]) + as.numeric(sqm_mean$SQM2[10])) /2
 
 avg_func <- function(data, date_time, func){
   avg <- c()
   if(func == "mean"){
     for(i in 1:nrow(date_time)){
-      avg[[i]] <- (as.numeric(data$SQM1[i]) + as.numeric(data$SQM2[i])) /2 
+      avg[[i]] <- (as.numeric(data$SQM1[i]) + as.numeric(data$SQM2[i]))/ 2 
     } } else if(func == "sd"){ # for the variance/sd stuff:
       for(i in 1:nrow(date_time)){
-        i_group <- as.integer(i)
         # Need to put in more accurate error:
         #reframe(variance2 = SQM2 / sqrt(6)) |>
         # total_variance <- sqrt(variance^2 + variance2^2 + 2*(0.1)^2)/2
-        n1 <- n_count(data, 6, i_group, "SQM1")
-        n2 <- n_count(data, 6, i_group, "SQM2")
-        avg[[i]] <- sqrt( (as.numeric(data$sd1[i])^2) + (as.numeric(data$sd2[i])^2) + 2*(0.1)^2 ) / 2 
+        avg[[i]] <- (as.numeric(data$sd1[i]) + as.numeric(data$sd2[i]))/ 2 
       } }
   return(avg)
 }
 
-#n_count(data, 6, 1, "SQM1")
+avg <- (as.numeric(sqm_means$SQM1[1]) + as.numeric(sqm_means$SQM2[1]))/ 2 
 
-#avg <- (as.numeric(sqm_means$SQM1[1]) + as.numeric(sqm_means$SQM2[1]))/ 2 
+
 
 # function for inputting lists to mutate()
 
-# Need to actually compute sd stuff...
-
-mutate_func <- function(date_time, n, device, func){
+mutate_func <- function(date_time, n, func){
   n <- as.integer(n)
   n_sd <- 0
   avg <- c()
-  var <- c()
-  if(device == "SQM1"){
+  if(func == 1){
     for(i in 1:nrow(date_time)){
-      avg[[i]] <-  mean(dat_filt$SQM1[((n*(i-1) + 1): (n*(i-1) + n))], na.rm = TRUE) 
-      n_sd <- n_count(dat_filt, n, i, "SQM1")
-      var[[i]] <- sd(dat_filt$SQM1[((n*(i-1) + 1): (n*(i-1) + n))], na.rm = TRUE) / sqrt(n_sd)
-      # sdv <- c()
-      # for(i in 1:6){
-      #   sdv[[i]] <- (dat_filt$SQM1[n*(i_count-1) + i] - avg[[i_count]])^2 
-      # } 
-      # var[[i_count]] <- (sum(as.numeric(sdv[((n*(i_count-1)) + 1: (n*(i_count-1)+ n))])) / n_sd)
+      avg[[i]] <-  mean(dat_filt$SQM1[((n*(i-1)) + 1: (n*(i-1)+ n))], na.rm = TRUE) 
       }
-    }else if(device == "SQM2"){
+    }else if(func ==2){
       for(i in 1:nrow(date_time)){
-        avg[[i]] <- mean(dat_filt$SQM2[((n*(i-1) + 1): (n*(i-1) + n))], na.rm = TRUE) 
+        avg[[i]] <- mean(dat_filt$SQM2[((n*(i-1)) + 1: (n*(i-1)+ n))], na.rm = TRUE) }
+      
+    }else if(func ==3){
+      for(i in 1:nrow(date_time)){
+        i <- as.integer(i)
+        n_sd <- n_count(dat_filt, n, i, "SQM1")
+        avg[[i]] <- sd(dat_filt$SQM1[((n*(i-1)) + 1: (n*(i-1)+ n))], na.rm = TRUE) / sqrt(n_sd)}
+    }else if(func ==4){
+      for(i in 1:nrow(date_time)){
+        i <- as.integer(i)
         n_sd <- n_count(dat_filt, n, i, "SQM2")
-        var[[i]] <- sd(dat_filt$SQM2[((n*(i-1) + 1): (n*(i-1) + n))], na.rm = TRUE) / sqrt(n_sd)
-        }
-      # sdv <- c()
-      # for(i in 1:6){
-      #   sdv[[i]] <- (dat_filt$SQM2[n*(i_count-1) + i] - avg[[i_count]])^2 
-      # } 
-      # var[[i_count]] <- (sum(as.numeric(sdv[((n*(i_count-1)) + 1: (n*(i_count-1)+ n))]), na.rm = TRUE) / n_sd)
+        avg[[i]] <- sd(dat_filt$SQM2[((n*(i-1)) + 1: (n*(i-1)+ n))], na.rm = TRUE) / sqrt(n_sd)}
     }
-  if(func == "mean"){
-    return(avg)
-  } else if(func == "sd"){
-    return(var)
-  }
+  return(avg)
 }
 
-t(mutate_func(date_time, 6, "SQM1", "mean"))
-t(mutate_func(date_time, 6, "SQM2", "mean"))
-
-
-
-t(avg_func(sqm_means, date_time, "mean"))
-
-#(n*(i-1) + 1): (n*(i-1) + n)
-
-#sum(sd(((6*(69-1)) + 1: (6*(69-1)+ 6)), na.rm = TRUE), na.rm = TRUE) / sqrt(5)
-dat_filt$SQM1[55:60]
-
-(6*(i-1) + 1): (6*(i-1) + 6)
-
-dat_filt$SQM1[(6*(i-1) + 1): (6*(i-1) + 6)]
-dat_filt$SQM2[(6*(i-1) + 1): (6*(i-1) + 6)]
-
-i <- 10
-
-
-sqm1_test <- mean(dat_filt$SQM1[(6*(i-1) + 1): (6*(i-1) + 6)], na.rm = TRUE)
-sqm2_test <- mean(dat_filt$SQM2[(6*(i-1) + 1): (6*(i-1) + 6)], na.rm = TRUE)
-sqm_mean_test <- (sqm1_test + sqm2_test)/2
-sqm_mean_test
-
-sd1_test <- sd(dat_filt$SQM2[(6*(i-1) + 1): (6*(i-1) + 6)], na.rm = TRUE) / sqrt(6)
-
-sd2_test <- sd(dat_filt$SQM1[(6*(i-1) + 1): (6*(i-1) + 6)], na.rm = TRUE) / sqrt(6)
-
-sd_total_test <- sqrt( (as.numeric(sd1_test)^2) + (as.numeric(sd2_test)^2) + 2*(0.1)^2 ) / 2 
-sd_total_test
 
 
 #Putting avg and sd into manual_calculations:
@@ -183,10 +171,10 @@ manual_calculations <- function(data){
   # The code below works!
   
   sqm_means <- date |>
-    mutate(SQM1 = mutate_func(date_time,6,"SQM1", "mean")) |>
-    mutate(SQM2 = mutate_func(date_time,6,"SQM2", "mean")) |>
-    mutate(sd1 = mutate_func(date_time,6,"SQM1", "sd")) |>
-    mutate(sd2 = mutate_func(date_time,6,"SQM2", "sd"))
+    mutate(SQM1 = mutate_func(date_time,6,1)) |>
+    mutate(SQM2 = mutate_func(date_time,6,2)) |>
+    mutate(sd1 = mutate_func(date_time,6,3)) |>
+    mutate(sd2 = mutate_func(date_time,6,4))
   #return(sqm_means)
   
   sqm_mean <- date |>
@@ -197,34 +185,68 @@ manual_calculations <- function(data){
   date_time1 <- date_time |>
     select(- SQM1, - SQM2)
   
-   sqm_total_info <- right_join(sqm_mean, date_time1)
+   sqm_total_info <- right_join(date_time1, sqm_mean)
    #return(sqm_total_info)
 }
 
+#reframe(variance2 = SQM2 / sqrt(6)) |>
+# total_variance <- sqrt(variance^2 + variance2^2 + 2*(0.1)^2)/2
+
 sqm_mean <- manual_calculations(data)
 
-sqm_means <- date |>
-  mutate(SQM1 = mutate_func(date_time,6,"SQM1", "mean")) |>
-  mutate(SQM2 = mutate_func(date_time,6,"SQM2", "mean")) |>
-  mutate(sd1 = mutate_func(date_time,6,"SQM1", "sd")) |>
-  mutate(sd2 = mutate_func(date_time,6,"SQM2", "sd"))
-
-avg_func(sqm_means, date_time, "mean")
 
 
+# Create a sample data frame
+df <- data.frame(
+  ID = c(1, 2, 3),
+  Name = c("Aliyana", "Boby", "Charlie"),
+  Skills = c("R,Python,SQL", "Excel,Tableau", "Java,C++,Python")
+)
+print(df)
+
+# Split the Skills column using strsplit
+skills_split <- strsplit(df$Skills, ",")
+# Create a new data frame with repeated rows based on the length of split lists
+df_long <- df[rep(seq_len(nrow(df)), sapply(skills_split, length)), ]
+# Assign the expanded skills to the new data frame
+df_long$Skills <- unlist(skills_split)
+print(df_long)
+
+
+
+# This is a test to see what I can do with Extra_Variables column.
+
+# I'm going to try using the "separate_rows()" function
+
+test_text <- sqm_mean$Extra_Variables[222]
+
+comma_split_test <- strsplit(test_text, ",")
+df_long <- test_text[rep(seq_len(nrow(test_text)), sapply(comma_split_test, length)), ]
+
+
+sqm_mean$Extra_Variables[222]
+
+if(sqm_mean$Extra_Variables[[222]] == "Car_On"){
+  return(TRUE)
+}
+
+
+read.csv(text = test_text)
+
+read.csv(text = sqm_mean$Extra_Variables[222])
 
 date_time <- date_time |>
   select(- SQM1, - SQM2)
 sqm_total_info <- right_join(date_time, sqm_mean)
 
-# Below is older/ unused code.
 
 
-date <- date_time |>
-  reframe(Category, Location, Date_Time)
 
-sqm1 <- mutate_func(date_time,6,1)
-sqm2 <- mutate_func(date_time,6,2)
+
+
+
+
+
 
 sqm_mean <- right_join(sqm1,sqm2)
 
@@ -236,7 +258,7 @@ sqm_mean <- date |>
   select(SQM1, SQM2) 
 
 sqm_mean_total <- date |>
-  mutate(SQM = avg_func(sqm_mean))
+  mutate(SQM = avg_func(sqm_mean, date_time, "mean"))
 
 
 manual_calculations_old_func <- function(data){
@@ -258,8 +280,8 @@ manual_calculations_old_func <- function(data){
   #print(avg2)
   # This may suck to interpret later, but it is just going from 1 to 6, and taking into account how many iterations there already have been (6*(i-1))
   
-  #sqm_mean <- date_time |>
-   # reframe(SQM = mutate_func(date_time,n,1))
+  sqm_mean <- date_time |>
+    reframe(SQM = mutate_func(date_time,n,1))
     #mutate(SQM1 = mutate_func(date_time,1))
     #mutate(SQM2 = mutate_func(date_time,2))
 }
@@ -284,57 +306,6 @@ func_test(dat_filt)
 sqm_mean <- manual_calculations(data)
 
 
-  # dat_filt <- data[,1:18] |>
-  #   group_by(Location,Date,Time, Category) |>
-  #   mutate(Date_Time = mdy_hms(paste(Date,Time))) |>
-  #   filter(!is.na(Date_Time))
-  # date_time <- dat_filt |>
-  #   distinct(Date_Time, .keep_all = TRUE)
-  
-  
-  
-  
-  
-  
-  
-  # sqm1_mean <- aggregate(SQM1~ Date_Time, 
-  #                        dat_filt,
-  #                        FUN = mean, na.rm = TRUE)
-  # 
-  # sqm2_mean <- aggregate(SQM2~ Date_Time, 
-  #                        dat_filt,
-  #                        FUN = mean, na.rm = TRUE) 
-  # 
-  # variance <- aggregate(SQM1~ Date_Time,
-  #                       dat_filt,
-  #                       FUN = sd, na.rm = TRUE) |>
-  #   reframe(variance = SQM1 / sqrt(6)) |>
-  #   select(variance)
-  # 
-  # variance2 <- aggregate(SQM2~ Date_Time,
-  #                        dat_filt,
-  #                        FUN = sd, na.rm = TRUE) |>
-  #   reframe(variance2 = SQM2 / sqrt(6)) |>
-  #   select(variance2)
-  # # There is one NA, so this isn't perfect... I will have to see if I should change that.
-  # # I think I'll have to make a for loop instead. It isn't using built in functions of course, but it would be better most likely.
-  # 
-  # pre_sqm_means <- mutate(sqm1_mean,sqm2_mean)
-  # total_variance <- sqrt(variance^2 + variance2^2 + 2*(0.1)^2)/2
-  # sqm_means_data <- mutate(total_variance, pre_sqm_means)
-  # 
-  # # Now to join the mean of each SQM device.
-  # 
-  # only_sqm_means <- sqm_means_data |>
-  #   select(SQM1,SQM2)
-  # 
-  # sqm_mean <- right_join(sqm_means_data, date_time)|>
-  #   mutate(SQM = rowMeans(only_sqm_means)) |>
-  #   group_by(Category,Date_Time) 
-  #reframe(Date_Time,Category,Location,SQM, variance,
-  #        Weather,Cloud_Cover,Relative_Humidity,
-  #        Moon_Brightness,Moon_Cycle, Moon_Magnitude, Moon_Altitude)
-#}
 
 manual_processer(data)
 
@@ -348,76 +319,19 @@ manual_processer(data)
 
 
 
-#Not usefull yet...
-#variable_processer <- function(data){
-#  i <- readline(prompt = "Which variable set? (Remember to use 'data' for raw_var and 'sqm_mean_all_data' for var and #moon_var)
-#                input 1 for raw, 2 for all usefull var, or 3 for moon_var")
-#  if(i ==1){
-#    dat_filt <- data[,1:17]
-#    return(names(dat_filt))
-#  }else if(i ==2){
-#    return(names(data))
-#  }else if(i ==3){
-#    moon_filt <- data |>
-#      select(Location, Date, Time, Category, SQM, Moon_Cycle, Phase., 
-#             Moon_Brightness, Moon_Magnitude, Moon_Altitude)
-#    return(names(moon_filt))
-#  }
-#}
-
-#raw_var <- variable_processer(data)
-#moon_var <- variable_processer(sqm_mean_all_data)
-
-
-# Testing:
-
-dat_filt <- data[,1:18] |>
-  group_by(Location,Date,Time, Category) |>
-  mutate(Date_Time = mdy_hms(paste(Date,Time))) |>
-  filter(!is.na(Date_Time))
-date_time <- dat_filt |>
-  ungroup() |>
-  group_by(Date, Time) |>
-  summarise(Date = unique(Date)) |>
-  filter(Date != "") |> 
-  mutate(Date_Time = mdy_hms(paste(Date,Time))) 
-
-date_time <- dat_filt |>
-  distinct(Date_Time, .keep_all = TRUE)
-
-
-sqm1_mean <- dat_filt |>
-  aggregate(SQM1 ~ Date_Time,
-            FUN = mean, na.rm = TRUE) 
-
-sqm2_mean <- dat_filt |>
-  aggregate(SQM2 ~ Date_Time,
-            FUN = mean, na.rm = TRUE) 
-
-variance <- aggregate(SQM1~ Date_Time,
-                      dat_filt,
-                      FUN = sd, na.rm = TRUE) |>
-  reframe(variance = SQM1 / sqrt(6)) |>
-  select(variance)
-
-variance2 <- aggregate(SQM2~ Date_Time,
-                       dat_filt,
-                       FUN = sd, na.rm = TRUE) |>
-  reframe(variance2 = SQM2 / sqrt(6)) |>
-  select(variance2)
-
-pre_sqm_means <- mutate(sqm1_mean,sqm2_mean)
-total_variance <- sqrt(variance^2 + variance2^2 + 2*(0.1)^2)/2
-sqm_means_data <- mutate(total_variance, pre_sqm_means)
-
-# Now to join the mean of each SQM device.
-
-only_sqm_means <- sqm_means_data |>
-  mutate(SQM = rowMeans(c(SQM1,SQM2)))
-
-sqm_mean <- right_join(sqm_means_data, date_time)|>
-  mutate(SQM = rowMeans(only_sqm_means)) |>
-  group_by(Category,Date_Time) 
+  dataset <- list()
+  for(i in 1:length(data$Moon_Altitude)){
+    if(is.na(data$Moon_Altitude[i]) == TRUE){
+      dataset[i] <- NA
+    } else{
+      if(data$Moon_Altitude[i] > 0){
+        dataset[i] <- TRUE
+        } else{
+          dataset[i] <- FALSE
+        }
+  }
+  return(dataset)
+}
 #reframe(Date_Time,Category,Location,SQM, variance,
 #        Weather,Cloud_Cover,Relative_Humidity,
 #        Moon_Brightness,Moon_Cycle, Moon_Magnitude, Moon_Altitude)
@@ -427,121 +341,9 @@ sqm_mean <- right_join(sqm_means_data, date_time)|>
 
 
 
-names(data)
-
-# Basic processer works to give mean of all right now.
-# I also added a function to find standard deviation.
-
-basic_processer <- function(data){
-  dat_filt <- data[,1:18] |>
-    group_by(Location,Date,Time, Category) |>
-    mutate(Date_Time = mdy_hms(paste(Date,Time))) |>
-    filter(!is.na(Date_Time))
-  date_time <- dat_filt |>
-    distinct(Date_Time, .keep_all = TRUE)
-  
-  sqm1_mean <- aggregate(SQM1~ Date_Time, 
-                         dat_filt,
-                         FUN = mean, na.rm = TRUE)
-  
-  sqm2_mean <- aggregate(SQM2~ Date_Time, 
-                         dat_filt,
-                         FUN = mean, na.rm = TRUE) 
-  
-  variance <- aggregate(SQM1~ Date_Time,
-                        dat_filt,
-                        FUN = sd, na.rm = TRUE) |>
-    reframe(variance = SQM1 / sqrt(6)) |>
-    select(variance)
-  
-  variance2 <- aggregate(SQM2~ Date_Time,
-                         dat_filt,
-                         FUN = sd, na.rm = TRUE) |>
-    reframe(variance2 = SQM2 / sqrt(6)) |>
-    select(variance2)
-  # There is one NA, so this isn't perfect... I will have to see if I should change that.
-  # I think I'll have to make a for loop instead. It isn't using built in functions of course, but it would be better most likely.
-  
-  pre_sqm_means <- mutate(sqm1_mean,sqm2_mean)
-  total_variance <- sqrt(variance^2 + variance2^2 + 2*(0.1)^2)/2
-  sqm_means_data <- mutate(total_variance, pre_sqm_means)
-  
-  # Now to join the mean of each SQM device.
-  
-  only_sqm_means <- sqm_means_data |>
-    select(SQM1,SQM2)
-  
-  sqm_mean <- right_join(sqm_means_data, date_time)|>
-    mutate(SQM = rowMeans(only_sqm_means)) |>
-    group_by(Category,Date_Time) 
-  #reframe(Date_Time,Category,Location,SQM, variance,
-  #        Weather,Cloud_Cover,Relative_Humidity,
-  #        Moon_Brightness,Moon_Cycle, Moon_Magnitude, Moon_Altitude)
-}
-
-sqm_mean_all_data <- basic_processer(data)
 
 
 
-
-
-# Slightly broken old one:
-
-# This just needs the inputs all put in, but it breaks it because it isn't doing it properly.
-basic_processer <- function(data){
-  dat_filt <- data[,1:17] |>
-    group_by(Location,Date,Time, Category) 
-  date_time <- dat_filt |>
-    ungroup() |>
-    group_by(Date, Time) |>
-    summarise(Date = unique(Date)) |>
-    filter(Date != "") |> 
-    mutate(Date_Time = mdy_hms(paste(Date,Time))) 
-  dat_datetime <- right_join(dat_filt,date_time)
-  
-  sqm1_mean <- dat_datetime |>
-    aggregate(SQM1~ Time + Date + Location + Category, 
-              FUN = mean, na.rm = TRUE) |>
-    
-    sqm2_mean <- dat_datetime |>
-    aggregate(SQM2~ Time + Date + Location + Category, 
-              FUN = mean, na.rm = TRUE) |>
-    ungroup() |>
-    reframe(Date,Time,Category,Location,SQM2,
-            Weather_Conditions,Clouds,Cloud_Cover,Relative_Humidity,
-            Moon_Brightness,Moon_Cycle, Moon_Magnitude, Moon_Altitude)
-  variance <- aggregate(SQM1~ Time + Date + Location + Category + 
-                          Weather_Conditions + Clouds + Relative_Humidity + Cloud_Cover + 
-                          Moon_Brightness + Moon_Cycle + Moon_Magnitude + Moon_Altitude,dat_filt, 
-                        FUN = sd, na.rm = TRUE) |>
-    reframe(variance = SQM1 / sqrt(6)) |>
-    select(variance)
-  variance2 <- aggregate(SQM2~ Time + Date + Location + Category + 
-                           Weather_Conditions + Clouds + Clouds + Relative_Humidity + Cloud_Cover + 
-                           Moon_Brightness + Moon_Cycle + Moon_Magnitude + Moon_Altitude,dat_filt, 
-                         FUN = sd, na.rm = TRUE) |>
-    reframe(variance2 = SQM2 / sqrt(6)) |> 
-    # There is one NA, so this isn't perfect... I will have to see if I should change that.
-    select(variance2)
-  
-  pre_sqm_means <- right_join(sqm1_mean,sqm2_mean)
-  total_variance <- sqrt(variance^2 + variance2^2 + 2*(0.1)^2)/2
-  sqm_means_data <- mutate(total_variance, pre_sqm_means)
-  
-  # Now to join the mean of each SQM device.
-  
-  only_sqm_means <- sqm_means_data |>
-    select(SQM1,SQM2)
-  
-  sqm_mean <- right_join(sqm_means_data, date_time)|>
-    reframe(Category, SQM = rowMeans(only_sqm_means)) |>
-    group_by(Category,Date_Time) |>
-    reframe(Date_Time,Category,Location,SQM, variance,
-            Weather,Cloud_Cover,Relative_Humidity,
-            Moon_Brightness,Moon_Cycle, Moon_Magnitude, Moon_Altitude)
-}
-
-#variables <- variable_processer(data)
 
 
 
@@ -569,71 +371,86 @@ location_distinguisher <- function(data, i){
   }
 }
 
-cmu_sqm_data <- location_distinguisher(sqm_mean_all_data,1)
-rim_sqm_data <- location_distinguisher(sqm_mean_all_data,2)
-apt_sqm_data <- location_distinguisher(sqm_mean_all_data,3)
+cmu_sqm_data <- location_distinguisher(sqm_mean,1)
+rim_sqm_data <- location_distinguisher(sqm_mean,2)
+apt_sqm_data <- location_distinguisher(sqm_mean,3)
 
 
 # This will filter out data that isn't useful for conclusions on the effect of the moon.
 
-moon_above_or_below <- function(data){
+is.na(sqm_mean$Moon_Altitude[200])
+
+moon_above_or_below <- function(data){ # This function is mostly for R to plot as a legend.
   dataset <- list()
   for(i in 1:length(data$Moon_Altitude)){
-    if(data$Moon_Altitude[i] > 0){
-      dataset[i] <- "Above"
+    if(is.na(data$Moon_Altitude[i]) == TRUE){
+      dataset[i] <- NA
     } else{
-      dataset[i] <- "Below"
+      if(data$Moon_Altitude[i] > 0){
+        dataset[i] <- "Above"
+      } else{
+        dataset[i] <- "Below"
+      }
     }
   }
-  return(dataset)
+  return(t(dataset))
 }
 
-moon_above <- function(data){
+moon_above <- function(data){ # This is where R gives a logical to Moon_Altitude so we can easily manipulate it.
   dataset <- list()
   for(i in 1:length(data$Moon_Altitude)){
-    if(data$Moon_Altitude[i] > 0){
-      dataset[i] <- TRUE
+    if(is.na(data$Moon_Altitude[i]) == TRUE){
+      dataset[i] <- NA
     } else{
-      dataset[i] <- FALSE
+      if(data$Moon_Altitude[i] > 0){
+        dataset[i] <- TRUE
+        } else{
+          dataset[i] <- FALSE
+        }
     }
   }
-  return(dataset)
+  return(t(dataset))
 }
+
+
 
 moon_filter <- function(data, i){
+  pts_per_instance <- seq(from = 1, to = nrow(dat_filt), by = 6)
+  date_time <- dat_filt[pts_per_instance,]
   if(i == 1){
-    cmu_moon_data <- data |>
+    cmu_moon_filt <- date_time |>
       filter(Category == "CMU") 
-    cmu_moon_data <- cmu_moon_data |>
-      mutate(above = moon_above(cmu_moon_data)) |>
+    cmu_moon_data <- cmu_moon_filt |>
+      mutate(above = moon_above(cmu_moon_data)) |> 
       mutate(above_below = moon_above_or_below(cmu_moon_data))
+    
     return(cmu_moon_data)
   } else if(i ==2){
-    rim_moon_data <- data |>
+    rim_moon_data <- date_time |>
       filter(Category == "Rimrock")
     rim_moon_data <- rim_moon_data |>
       mutate(above = moon_above(rim_moon_data)) |>
       mutate(above_below = moon_above_or_below(rim_moon_data))
     return(rim_moon_data)
   } else if(i ==3){
-    apt_moon_data <- data |>
+    apt_moon_data <- date_time |>
       filter(Category == "Rock_Slide")
     apt_moon_data <- apt_moon_data |>
       mutate(above = moon_above(apt_moon_data)) |>
       mutate(above_below = moon_above_or_below(apt_moon_data))
     return(apt_moon_data)
   } else if(i ==4){
-    all_moon_data <- data |>
+    all_moon_data <- date_time |>
       mutate(above = moon_above(data)) |>
       mutate(above_below = moon_above_or_below(data))
     return(all_moon_data)
   }
 }
 
-cmu_moon_data <- moon_filter(sqm_mean_all_data,1)
-rim_moon_data <- moon_filter(sqm_mean_all_data,2)
-apt_moon_data <- moon_filter(sqm_mean_all_data,3)
-all_moon_data <- moon_filter(sqm_mean_all_data,4)
+cmu_moon_data <- moon_filter(sqm_mean,1)
+rim_moon_data <- moon_filter(sqm_mean,2)
+apt_moon_data <- moon_filter(sqm_mean,3)
+all_moon_data <- moon_filter(sqm_mean,4)
 
 #
 # Moon cycle stuff:
