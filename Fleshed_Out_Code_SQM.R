@@ -7,6 +7,7 @@
 library(tidyverse)
 library(lubridate)
 library(hms)
+library(dplyr)
 
 data <- read.csv("SQM_Readings_for_R.csv", stringsAsFactors = FALSE)
 
@@ -30,7 +31,6 @@ manual_filter <- function(data, interactive = FALSE) {
   dat_filt <- data[, 1:max_col] |>
     mutate(
       Date_Time = mdy_hms(paste(Date, Time)),
-      # NEW: Extract the hour and shift early morning readings to the previous calendar day
       hour_of_day = hour(Date_Time),
       Night_of = if_else(hour_of_day < 12, 
                          as.Date(Date_Time) - days(1), 
@@ -43,10 +43,6 @@ manual_filter <- function(data, interactive = FALSE) {
 
 manual_calculations <- function(data, interactive = FALSE) {
   dat_filt <- manual_filter(data, interactive)
-  
-  # Remove impossible dark outliers right away
-  # This is questionable...
-  dat_filt <- dat_filt |> filter(SQM1 < 23, SQM2 < 23)
   
   sqm_mean <- dat_filt |>
     mutate(reading_group = (row_number() - 1) %/% 6) |>
@@ -117,6 +113,25 @@ moon_func <- function(data) {
     )
 }
 
+# Locations with multiple acquisitions per night:
+consecutive_sqm <- all_moon_data %>%
+  # 1. Group by your location and the specific night
+  group_by(Category, Location, Night_of) %>%
+  
+  # 2. Filter to keep only groups with more than 1 distinct time entry
+  filter(n_distinct(Date_Time) > 1) %>%
+  
+  # 3. Ungroup so future operations aren't affected by the grouping
+  ungroup() %>%
+  
+  # 4. Optional: Sort the data so it's easy to look at the matching nights side-by-side
+  arrange(Category, Night_of, Date_Time)
+
+# View the first few rows to confirm it worked
+head(consecutive_sqm)
+
+
+
 # ==========================================
 # 3. DATA PROCESSING EXECUTION
 # ==========================================
@@ -134,6 +149,8 @@ all_moon_data <- moon_filter(sqm_mean, "All")
 # 4. STATISTICAL MODELING
 # ==========================================
 
+
+
 all_moon_horiz_lm <- lm(SQM ~ Moon_Magnitude + above_below, data = all_moon_data)
 summary(all_moon_horiz_lm)
 anova(all_moon_horiz_lm)
@@ -144,33 +161,32 @@ anova(all_moon_horiz_lm)
 # 
 # Residuals:
 #   Min      1Q  Median      3Q     Max 
-# -4.2584 -1.0601  0.0112  0.5951  3.4682 
+# -4.6475 -1.0969  0.0055  0.6897  3.5472 
 # 
 # Coefficients:
 #   Estimate Std. Error t value Pr(>|t|)    
-# (Intercept)      19.67216    0.37178  52.914  < 2e-16 ***
-#   Moon_Magnitude    0.21205    0.02865   7.400 4.71e-13 ***
-#   above_belowBelow  0.44451    0.17159   2.591  0.00982 ** 
-#   ---
+# (Intercept)      19.75641    0.37558  52.603  < 2e-16 ***
+#   Moon_Magnitude    0.21812    0.02898   7.528 1.82e-13 ***
+#   above_belowBelow  0.30739    0.17106   1.797   0.0728 .  
+# ---
 #   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 # 
-# Residual standard error: 1.628 on 589 degrees of freedom
-# (108 observations deleted due to missingness)
-# Multiple R-squared:  0.1373,	Adjusted R-squared:  0.1344 
-# F-statistic: 46.87 on 2 and 589 DF,  p-value: < 2.2e-16
+# Residual standard error: 1.651 on 621 degrees of freedom
+# (89 observations deleted due to missingness)
+# Multiple R-squared:  0.1221,	Adjusted R-squared:  0.1192 
+# F-statistic: 43.17 on 2 and 621 DF,  p-value: < 2.2e-16
 
 
 #
-
 
 # > anova(all_moon_horiz_lm)
 # Analysis of Variance Table
 # 
 # Response: SQM
 # Df  Sum Sq Mean Sq F value  Pr(>F)    
-# Moon_Magnitude   1  230.72 230.723 87.0295 < 2e-16 ***
-#   above_below      1   17.79  17.791  6.7109 0.00982 ** 
-#   Residuals      589 1561.49   2.651                    
+# Moon_Magnitude   1  226.46 226.459 83.1060 < 2e-16 ***
+#   above_below      1    8.80   8.799  3.2292 0.07282 .  
+# Residuals      621 1692.19   2.725                    
 # ---
 #   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
@@ -189,19 +205,19 @@ anova(all_moon_above_lm)
 # 
 # Residuals:
 #   Min      1Q  Median      3Q     Max 
-# -3.9495 -1.0145  0.0293  0.3855  3.7868 
+# -4.7250 -1.1067  0.0633  0.4913  3.7699 
 # 
 # Coefficients:
 #   Estimate Std. Error t value Pr(>|t|)    
-# (Intercept)       17.1107     0.1416 120.828  < 2e-16 ***
-#   above_belowBelow   0.9739     0.1627   5.984 3.77e-09 ***
+# (Intercept)       17.1201     0.1415 120.974  < 2e-16 ***
+#   above_belowBelow   0.8466     0.1620   5.226 2.37e-07 ***
 #   ---
 #   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 # 
-# Residual standard error: 1.699 on 591 degrees of freedom
-# (107 observations deleted due to missingness)
-# Multiple R-squared:  0.05713,	Adjusted R-squared:  0.05553 
-# F-statistic: 35.81 on 1 and 591 DF,  p-value: 3.775e-09
+# Residual standard error: 1.722 on 623 degrees of freedom
+# (88 observations deleted due to missingness)
+# Multiple R-squared:  0.042,	Adjusted R-squared:  0.04046 
+# F-statistic: 27.31 on 1 and 623 DF,  p-value: 2.366e-07
 
 #
 
@@ -210,12 +226,97 @@ anova(all_moon_above_lm)
 # 
 # Response: SQM
 # Df  Sum Sq Mean Sq F value    Pr(>F)    
-# above_below   1  103.41 103.408  35.809 3.775e-09 ***
-#   Residuals   591 1706.68   2.888                      
+# above_below   1   80.95  80.953  27.311 2.366e-07 ***
+#   Residuals   623 1846.63   2.964                      
 # ---
 #   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
 
+
+# Test for above_below with category. 
+# Next step would be doing a classification. Maybe use bortle scale
+
+
+category_above_lm <- lm(formula = SQM ~ Moon_Magnitude + above_below*Category, data = all_moon_data)
+summary(category_above_lm)
+
+Call:
+  lm(formula = SQM ~ Moon_Magnitude + above_below * Category, data = all_moon_data)
+
+# Residuals:
+#   Min      1Q  Median      3Q     Max 
+# -3.5391 -0.4016  0.1520  0.5910  2.2168 
+# 
+# Coefficients: (1 not defined because of singularities)
+# Estimate Std. Error t value Pr(>|t|)    
+# (Intercept)                         16.75338    0.22347  74.970  < 2e-16 ***
+#   Moon_Magnitude                       0.03837    0.01636   2.346 0.019292 *  
+#   above_belowBelow                     1.36552    0.11188  12.205  < 2e-16 ***
+#   CategoryGMO                          4.35017    0.18434  23.599  < 2e-16 ***
+#   CategoryRimrock                     -1.63314    0.16251 -10.049  < 2e-16 ***
+#   CategoryRock_Slide                  -0.77538    0.21510  -3.605 0.000338 ***
+#   above_belowBelow:CategoryGMO        -0.90723    0.22278  -4.072 5.26e-05 ***
+#   above_belowBelow:CategoryRimrock          NA         NA      NA       NA    
+# above_belowBelow:CategoryRock_Slide -0.93289    0.29414  -3.172 0.001591 ** 
+#   ---
+#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# 
+# Residual standard error: 0.892 on 616 degrees of freedom
+# (89 observations deleted due to missingness)
+# Multiple R-squared:  0.7457,	Adjusted R-squared:  0.7428 
+# F-statistic: 258.1 on 7 and 616 DF,  p-value: < 2.2e-16
+
+
+# Testing for Moon_Altitude * Moon_Magnitude:
+
+category_above_lm <- lm(formula = SQM ~ (Moon_Magnitude*Moon_Altitude) + (above_below*Category), data = all_moon_data)
+summary(category_above_lm)
+anova(category_above_lm)
+
+# Call:
+#   lm(formula = SQM ~ (Moon_Magnitude * Moon_Altitude) + (above_below * 
+#                                                            Category), data = all_moon_data)
+# 
+# # Residuals:
+# #   Min      1Q  Median      3Q     Max 
+# # -3.7109 -0.3646  0.1157  0.5696  2.0045 
+# # 
+# # Coefficients: (1 not defined because of singularities)
+# # Estimate Std. Error t value Pr(>|t|)    
+# # (Intercept)                         18.863630   0.511235  36.898  < 2e-16 ***
+# #   Moon_Magnitude                       0.174429   0.033853   5.152 3.47e-07 ***
+# #   Moon_Altitude                        0.050919   0.011180   4.555 6.33e-06 ***
+# #   above_belowBelow                     0.648542   0.191490   3.387 0.000752 ***
+# #   CategoryGMO                          3.722608   0.227499  16.363  < 2e-16 ***
+# #   CategoryRimrock                     -1.578396   0.160615  -9.827  < 2e-16 ***
+# #   CategoryRock_Slide                  -0.959675   0.215650  -4.450 1.02e-05 ***
+# #   Moon_Magnitude:Moon_Altitude         0.004819   0.001056   4.562 6.13e-06 ***
+# #   above_belowBelow:CategoryGMO        -0.138214   0.276294  -0.500 0.617084    
+# # above_belowBelow:CategoryRimrock           NA         NA      NA       NA    
+# # above_belowBelow:CategoryRock_Slide -0.544597   0.301851  -1.804 0.071691 .  
+# # ---
+# #   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# # 
+# # Residual standard error: 0.8786 on 614 degrees of freedom
+# # (89 observations deleted due to missingness)
+# # Multiple R-squared:  0.7541,	Adjusted R-squared:  0.7505 
+# # F-statistic: 209.2 on 9 and 614 DF,  p-value: < 2.2e-16
+
+
+# > anova(category_above_lm)
+# Analysis of Variance Table
+# 
+# Response: SQM
+# Df  Sum Sq Mean Sq  F value    Pr(>F)    
+# Moon_Magnitude                 1  226.46  226.46 293.3800 < 2.2e-16 ***
+#   Moon_Altitude                  1    2.16    2.16   2.8015  0.094687 .  
+# above_below                    1    7.55    7.55   9.7854  0.001842 ** 
+#   Category                       3 1183.13  394.38 510.9178 < 2.2e-16 ***
+#   Moon_Magnitude:Moon_Altitude   1   31.69   31.69  41.0521 2.953e-10 ***
+#   above_below:Category           2    2.51    1.26   1.6280  0.197170    
+# Residuals                    614  473.95    0.77                       
+# ---
+#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
 
 # Testing if the Moon's effect changes depending on the Location
@@ -230,28 +331,28 @@ anova(light_pollution_lm)
 # 
 # Residuals:
 #   Min      1Q  Median      3Q     Max 
-# -3.2085 -0.3737  0.1621  0.7797  1.9336 
+# -3.2083 -0.3871  0.1587  0.7672  1.9336 
 # 
 # Coefficients:
 #   Estimate Std. Error t value Pr(>|t|)    
-# (Intercept)                         18.79745    0.18664 100.716 < 2e-16 ***
-# Moon_Magnitude                       0.13143    0.01755   7.489 2.54e-13 ***
-# CategoryGMO                          3.06890    0.45273   6.779 2.95e-11 ***
-# CategoryRimrock                    219.30727 1287.10656   0.170  0.865    
-# CategoryRock_Slide                  -2.37926    1.22171  -1.947 0.052 .  
-# Moon_Magnitude:CategoryGMO          -0.04165    0.04781  -0.871 0.384    
-# Moon_Magnitude:CategoryRimrock      18.14635  106.09686   0.171 0.864    
-# Moon_Magnitude:CategoryRock_Slide   -0.07342    0.10652  -0.689 0.491    
+# (Intercept)                       18.79745    0.18867  99.633  < 2e-16 ***
+#   Moon_Magnitude                     0.13148    0.01774   7.411 4.14e-13 ***
+#   CategoryGMO                        3.08412    0.45765   6.739 3.67e-11 ***
+#   CategoryRimrock                   -4.44906    2.06677  -2.153   0.0317 *  
+#   CategoryRock_Slide                -2.37926    1.23498  -1.927   0.0545 .  
+# Moon_Magnitude:CategoryGMO        -0.03889    0.04833  -0.805   0.4213    
+# Moon_Magnitude:CategoryRimrock    -0.29790    0.19731  -1.510   0.1316    
+# Moon_Magnitude:CategoryRock_Slide -0.07346    0.10768  -0.682   0.4953    
 # ---
 #   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 # 
-# Residual standard error: 0.9823 on 590 degrees of freedom
-# (102 observations deleted due to missingness)
-# Multiple R-squared:  0.6856,	Adjusted R-squared:  0.6819 
-# F-statistic: 183.8 on 7 and 590 DF,  p-value: < 2.2e-16
+# Residual standard error: 0.9929 on 616 degrees of freedom
+# (89 observations deleted due to missingness)
+# Multiple R-squared:  0.6849,	Adjusted R-squared:  0.6813 
+# F-statistic: 191.3 on 7 and 616 DF,  p-value: < 2.2e-16
 
 
-# This model works well: R^2 = 0.6819 or makes up 68.19% of data.
+# This model works well: R^2 = 0.6819 or makes up 68.13% of data.
 
 
 # > anova(light_pollution_lm)
@@ -259,10 +360,10 @@ anova(light_pollution_lm)
 # 
 # Response: SQM
 # Df  Sum Sq Mean Sq  F value Pr(>F)    
-# Moon_Magnitude            1  231.41  231.41 239.8371 <2e-16 ***
-#   Category                  3 1009.05  336.35 348.6059 <2e-16 ***
-#   Moon_Magnitude:Category   3    1.15    0.38   0.3983 0.7542    
-# Residuals               590  569.26    0.96                    
+# Moon_Magnitude            1  226.46  226.46 229.6926 <2e-16 ***
+#   Category                  3 1090.48  363.49 368.6827 <2e-16 ***
+#   Moon_Magnitude:Category   3    3.18    1.06   1.0764 0.3585    
+# Residuals               616  607.33    0.99                    
 # ---
 #   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
@@ -275,22 +376,71 @@ summary(lm_location_clean)
 # 
 # Residuals:
 #   Min      1Q  Median      3Q     Max 
-# -3.1582 -0.4056  0.1608  0.7673  1.9912 
+# -3.1500 -0.3878  0.1614  0.7634  1.9898 
 # 
 # Coefficients:
 #   Estimate Std. Error t value Pr(>|t|)    
-# (Intercept)        18.72310    0.17223 108.709  < 2e-16 ***
-#   Moon_Magnitude      0.12422    0.01611   7.712 5.24e-14 ***
-#   CategoryGMO         3.45225    0.11611  29.731  < 2e-16 ***
-#   CategoryRimrock    -0.84701    0.37465  -2.261   0.0241 *  
-#   CategoryRock_Slide -1.55017    0.15905  -9.746  < 2e-16 ***
+# (Intercept)        18.70632    0.17385 107.603  < 2e-16 ***
+#   Moon_Magnitude      0.12264    0.01625   7.546 1.62e-13 ***
+#   CategoryGMO         3.44485    0.11756  29.302  < 2e-16 ***
+#   CategoryRimrock    -1.34115    0.17897  -7.494 2.33e-13 ***
+#   CategoryRock_Slide -1.55138    0.16105  -9.633  < 2e-16 ***
 #   ---
 #   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 # 
-# Residual standard error: 0.9808 on 593 degrees of freedom
-# (102 observations deleted due to missingness)
-# Multiple R-squared:  0.685,	Adjusted R-squared:  0.6829 
-# F-statistic: 322.4 on 4 and 593 DF,  p-value: < 2.2e-16
+# Residual standard error: 0.9931 on 619 degrees of freedom
+# (89 observations deleted due to missingness)
+# Multiple R-squared:  0.6833,	Adjusted R-squared:  0.6812 
+# F-statistic: 333.8 on 4 and 619 DF,  p-value: < 2.2e-16
+
+
+
+ lm_location_with_cat <- lm(SQM ~ Moon_Magnitude + Category * Location, data = all_moon_data)
+ summary(lm_location_with_cat)
+ anova(lm_location_with_cat)
+ 
+ # >  anova(lm_location_with_cat)
+ # Analysis of Variance Table
+ # 
+ # Response: SQM
+ # Df  Sum Sq Mean Sq F value    Pr(>F)    
+ # Moon_Magnitude   1  226.46  226.46 402.322 < 2.2e-16 ***
+ #   Category         3 1090.48  363.49 645.773 < 2.2e-16 ***
+ #   Location        46  287.98    6.26  11.122 < 2.2e-16 ***
+ #   Residuals      573  322.53    0.56                      
+ # ---
+ #   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+
+
+
+# ==========================================
+# 4.2 Same Day
+# ========================================
+
+same_day_lm <- lm(SQM ~ Moon_Magnitude + Category, data = consecutive_sqm)
+summary(same_day_lm)
+
+# Call:
+#   lm(formula = SQM ~ Moon_Magnitude + Category, data = consecutive_sqm)
+# 
+# Residuals:
+#   Min      1Q  Median      3Q     Max 
+# -2.8150 -0.2470  0.3751  0.5458  0.8942 
+# 
+# Coefficients:
+#   Estimate Std. Error t value Pr(>|t|)    
+# (Intercept)        17.997737   0.197955  90.918  < 2e-16 ***
+#   Moon_Magnitude      0.009805   0.023982   0.409    0.683    
+# CategoryGMO         3.066348   0.184042  16.661  < 2e-16 ***
+#   CategoryRock_Slide -2.012424   0.310114  -6.489 1.17e-09 ***
+#   ---
+#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# 
+# Residual standard error: 0.8491 on 151 degrees of freedom
+# (34 observations deleted due to missingness)
+# Multiple R-squared:  0.7211,	Adjusted R-squared:  0.7155 
+# F-statistic: 130.1 on 3 and 151 DF,  p-value: < 2.2e-16
 
 
 # ==========================================
