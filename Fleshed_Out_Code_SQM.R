@@ -31,7 +31,7 @@ manual_filter <- function(data, interactive = FALSE) {
   dat_filt <- data[, 1:max_col] |>
     mutate(
       Date_Time = mdy_hms(paste(Date, Time)),
-      hour_of_day = hour(Date_Time),
+      hour_of_day = hour(Date_Time), # Extracts the hour (0-23)
       Night_of = if_else(hour_of_day < 12, 
                          as.Date(Date_Time) - days(1), 
                          as.Date(Date_Time))
@@ -46,10 +46,11 @@ manual_calculations <- function(data, interactive = FALSE) {
   
   sqm_mean <- dat_filt |>
     mutate(reading_group = (row_number() - 1) %/% 6) |>
-    # NEW: Added Night_of to the group_by so it passes through to the final data
-    group_by(reading_group, Night_of, Location, Date_Time, Category, Weather_Conditions, Cloud_Cover, 
-             Clouds, Relative_Humidity, Moon_Brightness, Moon_Cycle, Moon_Magnitude, 
-             Moon_Altitude, Moon_Distance, Extra_Variables) |>
+    # REMOVED: Relative_Humidity
+    # ADDED: hour_of_day (so it doesn't get deleted during summarize)
+    group_by(reading_group, Night_of, hour_of_day, Location, Date_Time, Category, 
+             Weather_Conditions, Cloud_Cover, Clouds, Moon_Brightness, 
+             Moon_Cycle, Moon_Magnitude, Moon_Altitude, Extra_Variables) |>
     summarise(
       SQM1_mean = mean(SQM1, na.rm = TRUE),
       SQM2_mean = mean(SQM2, na.rm = TRUE),
@@ -65,7 +66,6 @@ manual_calculations <- function(data, interactive = FALSE) {
   return(sqm_mean)
 }
 
-# NEW FUNCTION: Extracts specific tags from the Extra_Variables string
 extract_extra_variables <- function(data) {
   data |>
     mutate(
@@ -73,7 +73,9 @@ extract_extra_variables <- function(data) {
       is_baseline    = str_detect(Extra_Variables, "Baseline"),
       is_car_on      = str_detect(Extra_Variables, "Car_On"),
       greenhouse_on  = str_detect(Extra_Variables, "Greenhouse_On"),
-      stadium_off    = str_detect(Extra_Variables, "Stadium_Off")
+      stadium_off    = str_detect(Extra_Variables, "Stadium_Off"),
+      # NEW: Establishes your true dark skies
+      true_dark_baseline = if_else(Category %in% c("GMO", "Highland_Lake", "Grand_Mesa", "Monument", "Moab"), TRUE, FALSE)
     )
 }
 
@@ -88,7 +90,6 @@ moon_filter <- function(data, site_category = "All") {
       SQM            = as.numeric(SQM),
       variance       = as.numeric(variance),
       Moon_Altitude  = as.numeric(Moon_Altitude),
-      Moon_Distance  = as.numeric(Moon_Distance),
       
       above       = Moon_Altitude > 0,
       above_below = ifelse(Moon_Altitude > 0, "Above", "Below")
@@ -137,6 +138,32 @@ comparison_data <- all_moon_data |>
   filter(Category == "CMU" | is_baseline == TRUE)
 
 
+bortle_func <- function(data) {
+  data |>
+    mutate(
+      Bortle_Class = case_when(
+        SQM >= 22.00 ~ 1,
+        SQM >= 21.90 ~ 2,
+        SQM >= 21.70 ~ 3,
+        SQM >= 20.50 ~ 4,
+        SQM >= 19.50 ~ 5,
+        SQM >= 18.95 ~ 6,
+        SQM >= 18.38 ~ 7,
+        SQM >= 17.80 ~ 8,
+        SQM <  17.80 ~ 9,
+        TRUE ~ NA_real_
+      ),
+      # Adding a text description makes plotting easier later!
+      Bortle_Desc = case_when(
+        Bortle_Class == 1 ~ "1: Pristine",
+        Bortle_Class <= 3 ~ "2-3: Rural Dark",
+        Bortle_Class <= 5 ~ "4-5: Suburban",
+        Bortle_Class <= 7 ~ "6-7: Bright Suburban",
+        Bortle_Class >= 8 ~ "8-9: City Light Dome"
+      )
+    )
+}
+
 
 
 # ==========================================
@@ -146,15 +173,218 @@ comparison_data <- all_moon_data |>
 sqm_mean <- manual_calculations(data, interactive = FALSE)
 sqm_mean <- extract_extra_variables(sqm_mean) # Apply the new tags
 sqm_mean <- moon_func(sqm_mean)
+sqm_mean <- bortle_func(sqm_mean)
 
 cmu_moon_data <- moon_filter(sqm_mean, "CMU")
 rim_moon_data <- moon_filter(sqm_mean, "Rimrock")
 apt_moon_data <- moon_filter(sqm_mean, "Rock_Slide")
 all_moon_data <- moon_filter(sqm_mean, "All")
 
+
+
+
+# ==========================================
+# Presentation stats!
+# ==========================================
+
+# Model 1: The Lunar Impact (Using full moon dataset)
+lunar_lm <- lm(SQM ~ above_below, data = all_moon_data)
+summary(lunar_lm)
+
+# Model 2: Pure light pollution (New Moon only)
+# Filter for New Moon first
+new_moon_data <- sqm_mean %>% filter(Moon_Cycle == "New_Moon")
+
+light_dome_lm <- lm(SQM ~ true_dark_baseline, data = new_moon_data)
+summary(light_dome_lm)
+
+
+# Test A: Does the city get darker late at night?
+time_lm <- lm(SQM ~ hour_of_day, data = all_moon_data)
+summary(time_lm)
+
+# Test B: Does moon altitude matter?
+altitude_lm <- lm(SQM ~ Moon_Altitude, data = all_moon_data)
+summary(altitude_lm)
+
+# Model: Interaction between clouds and location
+cloud_lm <- lm(SQM ~ Cloud_Cover + true_dark_baseline, data = all_moon_data)
+summary(cloud_lm)
+
+
+
+
+
+
 # ==========================================
 # 4. STATISTICAL MODELING
 # ==========================================
+
+
+
+# Isolate only the moments the moon is physically visible
+moon_up_data <- all_moon_data |> 
+  filter(above_below == "Above")
+
+# Test if altitude and magnitude interact while the moon is up
+moon_extinction_lm <- lm(SQM ~ Moon_Magnitude * Moon_Altitude + true_dark_baseline, data = moon_up_data)
+summary(moon_extinction_lm)
+
+
+
+# Get the New Moon data to remove lunar interference
+new_moon_data <- all_moon_data |> 
+  filter(Moon_Cycle == "New_Moon")
+
+# Test if the hour of the night changes the SQM, and if that depends on whether you are in the city
+time_of_night_lm <- lm(SQM ~ hour_of_day * true_dark_baseline, data = new_moon_data)
+summary(time_of_night_lm)
+
+
+# Does the moon setting push a site from a Bortle 8 to a Bortle 7?
+bortle_lm <- lm(Bortle_Class ~ above_below + true_dark_baseline, data = all_moon_data)
+summary(bortle_lm)
+
+
+# Call:
+#   lm(formula = Bortle_Class ~ above_below + true_dark_baseline, 
+#      data = all_moon_data)
+# 
+# Residuals:
+#   Min      1Q  Median      3Q     Max 
+# -3.3078 -0.3078 -0.1553  0.6922  2.8447 
+# 
+# Coefficients:
+#   Estimate Std. Error t value Pr(>|t|)    
+# (Intercept)             8.81803    0.07753 113.735  < 2e-16 ***
+#   above_belowBelow       -0.51021    0.08656  -5.894 7.87e-09 ***
+#   true_dark_baselineTRUE -4.15257    0.08320 -49.914  < 2e-16 ***
+#   ---
+#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# 
+# Residual standard error: 0.7263 on 410 degrees of freedom
+# Multiple R-squared:  0.8637,	Adjusted R-squared:  0.863 
+# F-statistic:  1299 on 2 and 410 DF,  p-value: < 2.2e-16
+
+
+
+# Assuming 'Clouds' is a text category like "Clear" vs "Cloudy"
+summary(lm(SQM ~ Cloud_Cover * true_dark_baseline, data = new_moon_data))
+
+
+
+# ==========================================
+# 1. REDEFINING THE TRUE DARK SKY BASELINE
+# ==========================================
+# Instead of relying on the manual tags in Extra_Variables, 
+# let's hardcode the true remote sites as your baseline.
+
+sqm_mean <- sqm_mean |>
+  mutate(
+    # True if it's a deeply dark site, False if it's urban/suburban
+    true_dark_baseline = if_else(Category %in% c("GMO", "Highland_Lake", "Grand_Mesa", "Monument", "Moab"), 
+                                 TRUE, FALSE)
+  )
+
+
+# 1. Ensure you have the New Moon data filtered
+new_moon_data <- sqm_mean |> filter(Moon_Cycle == "New_Moon")
+
+# 2. Run the linear regression model
+pure_light_dome_lm <- lm(SQM ~ true_dark_baseline, data = new_moon_data)
+
+# 3. View the results to get your Estimates and p-values
+summary(pure_light_dome_lm)
+
+
+
+# Call:
+#   lm(formula = SQM ~ true_dark_baseline, data = new_moon_data)
+# 
+# Residuals:
+#   Min      1Q  Median      3Q     Max 
+# -3.0983 -0.2266  0.2213  0.5010  2.0033 
+# 
+# Coefficients:
+#   Estimate Std. Error
+# (Intercept)             17.9450     0.1503
+# true_dark_baselineTRUE   3.1528     0.2761
+# t value Pr(>|t|)    
+# (Intercept)             119.39  < 2e-16 ***
+#   true_dark_baselineTRUE   11.42 8.77e-16 ***
+#   ---
+#   Signif. codes:  
+#   0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# 
+# Residual standard error: 0.9265 on 52 degrees of freedom
+# Multiple R-squared:  0.7149,	Adjusted R-squared:  0.7094 
+# F-statistic: 130.4 on 1 and 52 DF,  p-value: 8.769e-16
+
+
+
+
+
+
+
+# Create a dataset where the moon doesn't exist
+new_moon_data <- sqm_mean |>
+  filter(Moon_Cycle == "New_Moon")
+
+# Run a very clean model on this data. 
+# Notice we dropped all moon variables because they are irrelevant here!
+pure_light_dome_lm <- lm(SQM ~ Category, data = new_moon_data)
+
+# View the results to see the true difference between sites without the moon
+summary(pure_light_dome_lm)
+
+
+# Call:
+#   lm(formula = SQM ~ Category, data = new_moon_data)
+# 
+# Residuals:
+#   Min       1Q   Median       3Q      Max 
+# -2.76002 -0.02628  0.04369  0.47623  0.68165 
+# 
+# Coefficients:
+#   Estimate Std. Error t value Pr(>|t|)    
+# (Intercept)              17.9384     0.1318 136.062  < 2e-16 ***
+#   CategoryConnected_Lakes   1.3350     0.7910   1.688 0.098109 .  
+# CategoryCorn_Lake         2.0100     0.7910   2.541 0.014416 *  
+#   CategoryGMO               3.3665     0.3229  10.425 8.23e-14 ***
+#   CategoryHighland_Lake     3.2275     0.5671   5.692 7.86e-07 ***
+#   CategoryMonument          2.9330     0.3229   9.082 6.51e-12 ***
+#   CategoryRock_Slide       -3.0917     0.7910  -3.908 0.000297 ***
+#   ---
+#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+# 
+# Residual standard error: 0.78 on 47 degrees of freedom
+# Multiple R-squared:  0.8174,	Adjusted R-squared:  0.7941 
+# F-statistic: 35.06 on 6 and 47 DF,  p-value: 9.432e-16
+
+
+
+ggplot(new_moon_data, aes(x = reorder(Category, -SQM), y = SQM, fill = true_dark_baseline)) +
+  geom_boxplot(alpha = 0.8) +
+  scale_y_reverse() + # Reverse so darker skies (higher SQM) are at the top
+  scale_fill_manual(values = c("FALSE" = "#E69F00", "TRUE" = "#56B4E9"),
+                    labels = c("Light Polluted (Valley)", "True Dark Sky (Baseline)")) +
+  theme_minimal() +
+  labs(
+    title = "Pure Light Pollution Comparison (New Moon Data Only)",
+    subtitle = "With the moon removed, all differences are due to geographic location",
+    x = "Location Category",
+    y = expression("SQM (mag/arcsec"^2*")"),
+    fill = "Site Type"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+
+
+
+
+
 
 
 
@@ -447,245 +677,6 @@ summary(lm_location_clean)
 
 
 
- lm_location_with_cat <- lm(SQM ~ Moon_Magnitude + Category * Location, data = all_moon_data)
- summary(lm_location_with_cat)
- anova(lm_location_with_cat)
- 
- 
-#  Call:
-#    lm(formula = SQM ~ Moon_Magnitude + Category * Location, data = all_moon_data)
-#  
-#  Residuals:
-#    Min      1Q  Median      3Q     Max 
-#  -2.4757 -0.2943  0.0000  0.5050  1.8557 
-#  
-#  Coefficients: (684 not defined because of singularities)
-#  Estimate Std. Error t value Pr(>|t|)    
-#  (Intercept)                                                      16.48476    0.27182  60.646  < 2e-16 ***
-#    Moon_Magnitude                                                    0.13340    0.01758   7.588 3.27e-13 ***
-#    CategoryConnected_Lakes                                           3.41821    0.81648   4.187 3.63e-05 ***
-#    CategoryCorn_Lake                                                 3.13590    0.80971   3.873 0.000129 ***
-#    CategoryGMO                                                       5.71562    0.40400  14.148  < 2e-16 ***
-#    CategoryGrand_Mesa                                                5.88375    0.58964   9.979  < 2e-16 ***
-#    CategoryHighland_Lake                                             5.79314    0.59162   9.792  < 2e-16 ***
-#    CategoryMoab                                                      6.06352    0.29211  20.758  < 2e-16 ***
-#    CategoryMonument                                                  5.79036    0.80986   7.150 5.51e-12 ***
-#    CategoryRimrock                                                   1.31104    0.80980   1.619 0.106400    
-#  CategoryRock_Slide                                                2.60296    0.49499   5.259 2.60e-07 ***
-#    Location1st_Parking_Lot                                           0.58906    0.96351   0.611 0.541369    
-#  Location2nd_Parking_Lot                                                NA         NA      NA       NA    
-#  LocationAcross_Array                                              0.31810    0.65725   0.484 0.628706    
-#  LocationAcross_Dome                                               0.09523    0.49681   0.192 0.848102    
-#  LocationAmerica_Mattress_Outlet                                   1.36083    1.11091   1.225 0.221447    
-#  LocationApartment                                                -2.08820    0.47617  -4.385 1.55e-05 ***
-#    LocationApartment_Stop-Sign                                            NA         NA      NA       NA    
-#  LocationArtists_Point                                            -0.62000    0.87855  -0.706 0.480861    
-#  LocationAspen_Main_Path                                           2.52322    0.28750   8.776  < 2e-16 ***
-#    LocationAsteria                                                   2.47620    0.37669   6.574 1.89e-10 ***
-#    LocationBehind_Hobby_Lobby                                        1.45217    1.11091   1.307 0.192047    
-#  LocationBetween_Sprouts-Hobby_Lobby                              -0.31936    1.11155  -0.287 0.774051    
-#  LocationBoat_Safety                                               0.01892    0.78553   0.024 0.980801    
-#  LocationBrakes_Plus                                              -0.91233    1.11091  -0.821 0.412089    
-#  LocationBunting_Parking_Lot                                       2.77855    0.23817  11.666  < 2e-16 ***
-#    LocationCampground_Dump_Station                                   0.38056    0.96287   0.395 0.692923    
-#  LocationCar                                                       0.09536    0.46018   0.207 0.835961    
-#  LocationClamshell                                                -0.02111    0.43037  -0.049 0.960902    
-#  LocationCoke_Ovens                                               -0.47968    0.90705  -0.529 0.597275    
-#  LocationCold_Shivers                                             -1.94312    1.11098  -1.749 0.081206 .  
-#  LocationConfluence-Hotel-Refuge                                   2.59960    0.28750   9.042  < 2e-16 ***
-#    LocationDistant_View                                             -0.80139    0.96210  -0.833 0.405459    
-#  LocationDollar_Tree_Parking_Lot                                   0.95397    1.11155   0.858 0.391381    
-#  LocationDome                                                      0.08791    0.52737   0.167 0.867713    
-#  LocationEinstein's                                               -0.52150    1.11091  -0.469 0.639065    
-# LocationEinstein_Parking_Lot                                      1.40064    1.11155   1.260 0.208524    
-# LocationEntrance                                                  0.03157    0.49681   0.064 0.949374    
-# LocationFallen_Rock                                              -0.37251    0.90706  -0.411 0.681569    
-# LocationFine-Arts_Bunting_Path                                    3.14037    0.80981   3.878 0.000127 ***
-# LocationFoster_Field_House_Sign                                   2.43947    0.58937   4.139 4.42e-05 ***
-# LocationFruita_Canyon_View                                       -1.67579    1.11098  -1.508 0.132403    
-# LocationGarfield-Escalante_Enterance                              2.25987    0.28238   8.003 2.02e-14 ***
-# LocationGrand Mesa-Fine_Arts_Path                                 2.65811    0.29341   9.059  < 2e-16 ***
-# LocationGrand_Valley_Overlook                                    -0.27208    1.11110  -0.245 0.806708    
-# LocationGrand_View                                               -0.71471    0.87854  -0.814 0.416500    
-# LocationHighland_View                                            -0.55025    0.87855  -0.626 0.531538    
-# LocationHill_Top                                                  0.34022    0.96287   0.353 0.724055    
-# LocationHobby_Lobby_Front                                        -0.26533    1.11091  -0.239 0.811373    
-# LocationHouston_Statue                                            2.51115    0.27773   9.042  < 2e-16 ***
-# LocationIn_array                                                 -0.38331    0.86475  -0.443 0.657867    
-# LocationInspection_Station                                        0.39889    0.96287   0.414 0.678940    
-# LocationLiberty_Cap                                              -0.65397    1.11409  -0.587 0.557602    
-# LocationLibrary-Grand_Mesa_Field                                  2.47493    0.27362   9.045  < 2e-16 ***
-# LocationLowe's_Parking_Lot                                       -1.25520    1.11155  -1.129 0.259612    
-#  LocationLowes                                                    -0.40417    1.11091  -0.364 0.716225    
-#  LocationMaverick_State                                            2.65859    0.29337   9.062  < 2e-16 ***
-#    LocationMaverick_Statue                                           0.52467    0.81011   0.648 0.517648    
-#  LocationMound_w_Trees                                             0.02180    0.49681   0.044 0.965024    
-#  LocationOtto's_Trail                                             -0.87680    0.90733  -0.966 0.334568    
-# LocationOutside_Canyonlands                                            NA         NA      NA       NA    
-# LocationParking_Lot                                                    NA         NA      NA       NA    
-# LocationPlaza                                                     1.82025    0.30011   6.065 3.56e-09 ***
-# LocationQuad                                                      2.56546    0.27361   9.376  < 2e-16 ***
-# LocationQudoba_Parking_Lot                                        1.38314    1.11155   1.244 0.214252    
-# LocationRandom_Turnoff                                           -0.07271    0.96214  -0.076 0.939808    
-# LocationRec_Center_Enterance_Parking_Lot                          1.59814    0.80987   1.973 0.049281 *  
-# LocationRed_Canyon                                               -0.26358    1.11113  -0.237 0.812633    
-# LocationRed_Robbin                                               -1.44233    1.11091  -1.298 0.195067    
-# LocationRimrock_Walmart_Parking_Lot                               0.03614    1.11156   0.033 0.974085    
-# LocationRimrock_Walmart_Propagne                                 -0.85770    1.11155  -0.772 0.440885    
-# LocationSprouts                                                  -1.44367    1.11091  -1.300 0.194655    
-# LocationTelephone_Pole                                                 NA         NA      NA       NA    
-# LocationTurnoff                                                        NA         NA      NA       NA    
-# LocationUC_Fountain                                               1.95972    0.27773   7.056 9.92e-12 ***
-# LocationUpper_Ute_Canyon_View                                    -0.75781    1.11417  -0.680 0.496880    
-# LocationUPS_Store                                                -0.20150    1.11091  -0.181 0.856177    
-# LocationUte_Canyon                                               -0.96131    0.96209  -0.999 0.318426    
-# LocationVisitor_Center                                                 NA         NA      NA       NA    
-# LocationWalmart_Greenhouse                                       -3.17750    1.11091  -2.860 0.004499 ** 
-# LocationWalmart_Grocery                                          -0.18408    0.96207  -0.191 0.848376    
-# LocationWalmart_Home                                                   NA         NA      NA       NA    
-# LocationWubben-Theatre_Path                                       2.48382    0.27773   8.943  < 2e-16 ***
-# LocationWubben_Courtyard                                          2.24180    0.31713   7.069 9.16e-12 ***
-# LocationWubben_Fine_Arts_Field                                    1.57472    0.26991   5.834 1.28e-08 ***
-# LocationWubben_Garden_Walk                                             NA         NA      NA       NA    
-# CategoryConnected_Lakes:Location1st_Parking_Lot                        NA         NA      NA       NA    
-# CategoryCorn_Lake:Location1st_Parking_Lot                              NA         NA      NA       NA    
-# CategoryGMO:Location1st_Parking_Lot                                    NA         NA      NA       NA    
-# CategoryGrand_Mesa:Location1st_Parking_Lot                             NA         NA      NA       NA    
-# CategoryHighland_Lake:Location1st_Parking_Lot                          NA         NA      NA       NA    
-# CategoryMoab:Location1st_Parking_Lot                                   NA         NA      NA       NA    
-# CategoryMonument:Location1st_Parking_Lot                               NA         NA      NA       NA    
-# CategoryRimrock:Location1st_Parking_Lot                                NA         NA      NA       NA    
-# CategoryRock_Slide:Location1st_Parking_Lot                             NA         NA      NA       NA    
-# CategoryConnected_Lakes:Location2nd_Parking_Lot                        NA         NA      NA       NA    
-# CategoryCorn_Lake:Location2nd_Parking_Lot                              NA         NA      NA       NA    
-# CategoryGMO:Location2nd_Parking_Lot                                    NA         NA      NA       NA    
-# CategoryGrand_Mesa:Location2nd_Parking_Lot                             NA         NA      NA       NA    
-# CategoryHighland_Lake:Location2nd_Parking_Lot                          NA         NA      NA       NA    
-# CategoryMoab:Location2nd_Parking_Lot                                   NA         NA      NA       NA    
-# CategoryMonument:Location2nd_Parking_Lot                               NA         NA      NA       NA    
-# CategoryRimrock:Location2nd_Parking_Lot                                NA         NA      NA       NA    
-# CategoryRock_Slide:Location2nd_Parking_Lot                             NA         NA      NA       NA    
-# CategoryConnected_Lakes:LocationAcross_Array                           NA         NA      NA       NA    
-# CategoryCorn_Lake:LocationAcross_Array                                 NA         NA      NA       NA    
-# CategoryGMO:LocationAcross_Array                                       NA         NA      NA       NA    
-# CategoryGrand_Mesa:LocationAcross_Array                                NA         NA      NA       NA    
-# CategoryHighland_Lake:LocationAcross_Array                             NA         NA      NA       NA    
-# CategoryMoab:LocationAcross_Array                                      NA         NA      NA       NA    
-# CategoryMonument:LocationAcross_Array                                  NA         NA      NA       NA    
-# CategoryRimrock:LocationAcross_Array                                   NA         NA      NA       NA    
-# CategoryRock_Slide:LocationAcross_Array                                NA         NA      NA       NA    
-# CategoryConnected_Lakes:LocationAcross_Dome                            NA         NA      NA       NA    
-# CategoryCorn_Lake:LocationAcross_Dome                                  NA         NA      NA       NA    
-# CategoryGMO:LocationAcross_Dome                                        NA         NA      NA       NA    
-# CategoryGrand_Mesa:LocationAcross_Dome                                 NA         NA      NA       NA    
-# CategoryHighland_Lake:LocationAcross_Dome                              NA         NA      NA       NA    
-# CategoryMoab:LocationAcross_Dome                                       NA         NA      NA       NA    
-# CategoryMonument:LocationAcross_Dome                                   NA         NA      NA       NA    
-# CategoryRimrock:LocationAcross_Dome                                    NA         NA      NA       NA    
-# CategoryRock_Slide:LocationAcross_Dome                                 NA         NA      NA       NA    
-# CategoryConnected_Lakes:LocationAmerica_Mattress_Outlet                NA         NA      NA       NA    
-# CategoryCorn_Lake:LocationAmerica_Mattress_Outlet                      NA         NA      NA       NA    
-# CategoryGMO:LocationAmerica_Mattress_Outlet                            NA         NA      NA       NA    
-# CategoryGrand_Mesa:LocationAmerica_Mattress_Outlet                     NA         NA      NA       NA    
-# CategoryHighland_Lake:LocationAmerica_Mattress_Outlet                  NA         NA      NA       NA    
-# CategoryMoab:LocationAmerica_Mattress_Outlet                           NA         NA      NA       NA    
-# CategoryMonument:LocationAmerica_Mattress_Outlet                       NA         NA      NA       NA    
-# CategoryRimrock:LocationAmerica_Mattress_Outlet                        NA         NA      NA       NA    
-# CategoryRock_Slide:LocationAmerica_Mattress_Outlet                     NA         NA      NA       NA    
-# CategoryConnected_Lakes:LocationApartment                              NA         NA      NA       NA    
-# CategoryCorn_Lake:LocationApartment                                    NA         NA      NA       NA    
-# CategoryGMO:LocationApartment                                          NA         NA      NA       NA    
-# CategoryGrand_Mesa:LocationApartment                                   NA         NA      NA       NA    
-# CategoryHighland_Lake:LocationApartment                                NA         NA      NA       NA    
-# CategoryMoab:LocationApartment                                         NA         NA      NA       NA    
-# CategoryMonument:LocationApartment                                     NA         NA      NA       NA    
-# CategoryRimrock:LocationApartment                                      NA         NA      NA       NA    
-# CategoryRock_Slide:LocationApartment                                   NA         NA      NA       NA    
-# CategoryConnected_Lakes:LocationApartment_Stop-Sign                    NA         NA      NA       NA    
-# CategoryCorn_Lake:LocationApartment_Stop-Sign                          NA         NA      NA       NA    
-# CategoryGMO:LocationApartment_Stop-Sign                                NA         NA      NA       NA    
-# CategoryGrand_Mesa:LocationApartment_Stop-Sign                         NA         NA      NA       NA    
-# CategoryHighland_Lake:LocationApartment_Stop-Sign                      NA         NA      NA       NA    
-# CategoryMoab:LocationApartment_Stop-Sign                               NA         NA      NA       NA    
-# CategoryMonument:LocationApartment_Stop-Sign                           NA         NA      NA       NA    
-# CategoryRimrock:LocationApartment_Stop-Sign                            NA         NA      NA       NA    
-# CategoryRock_Slide:LocationApartment_Stop-Sign                         NA         NA      NA       NA    
-# CategoryConnected_Lakes:LocationArtists_Point                          NA         NA      NA       NA    
-# CategoryCorn_Lake:LocationArtists_Point                                NA         NA      NA       NA    
-# CategoryGMO:LocationArtists_Point                                      NA         NA      NA       NA    
-# CategoryGrand_Mesa:LocationArtists_Point                               NA         NA      NA       NA    
-# CategoryHighland_Lake:LocationArtists_Point                            NA         NA      NA       NA    
-# CategoryMoab:LocationArtists_Point                                     NA         NA      NA       NA    
-# CategoryMonument:LocationArtists_Point                                 NA         NA      NA       NA    
-# CategoryRimrock:LocationArtists_Point                                  NA         NA      NA       NA    
-# CategoryRock_Slide:LocationArtists_Point                               NA         NA      NA       NA    
-# CategoryConnected_Lakes:LocationAspen_Main_Path                        NA         NA      NA       NA    
-# CategoryCorn_Lake:LocationAspen_Main_Path                              NA         NA      NA       NA    
-# CategoryGMO:LocationAspen_Main_Path                                    NA         NA      NA       NA    
-# CategoryGrand_Mesa:LocationAspen_Main_Path                             NA         NA      NA       NA    
-# CategoryHighland_Lake:LocationAspen_Main_Path                          NA         NA      NA       NA    
-# CategoryMoab:LocationAspen_Main_Path                                   NA         NA      NA       NA    
-# CategoryMonument:LocationAspen_Main_Path                               NA         NA      NA       NA    
-# CategoryRimrock:LocationAspen_Main_Path                                NA         NA      NA       NA    
-# CategoryRock_Slide:LocationAspen_Main_Path                             NA         NA      NA       NA    
-# CategoryConnected_Lakes:LocationAsteria                                NA         NA      NA       NA    
-# CategoryCorn_Lake:LocationAsteria                                      NA         NA      NA       NA    
-# CategoryGMO:LocationAsteria                                            NA         NA      NA       NA    
-# CategoryGrand_Mesa:LocationAsteria                                     NA         NA      NA       NA    
-# CategoryHighland_Lake:LocationAsteria                                  NA         NA      NA       NA    
-# CategoryMoab:LocationAsteria                                           NA         NA      NA       NA    
-# CategoryMonument:LocationAsteria                                       NA         NA      NA       NA    
-# CategoryRimrock:LocationAsteria                                        NA         NA      NA       NA    
-# CategoryRock_Slide:LocationAsteria                                     NA         NA      NA       NA    
-# CategoryConnected_Lakes:LocationBehind_Hobby_Lobby                     NA         NA      NA       NA    
-# CategoryCorn_Lake:LocationBehind_Hobby_Lobby                           NA         NA      NA       NA    
-# CategoryGMO:LocationBehind_Hobby_Lobby                                 NA         NA      NA       NA    
-# CategoryGrand_Mesa:LocationBehind_Hobby_Lobby                          NA         NA      NA       NA    
-# CategoryHighland_Lake:LocationBehind_Hobby_Lobby                       NA         NA      NA       NA    
-# CategoryMoab:LocationBehind_Hobby_Lobby                                NA         NA      NA       NA    
-# CategoryMonument:LocationBehind_Hobby_Lobby                            NA         NA      NA       NA    
-# CategoryRimrock:LocationBehind_Hobby_Lobby                             NA         NA      NA       NA    
-# CategoryRock_Slide:LocationBehind_Hobby_Lobby                          NA         NA      NA       NA    
-# CategoryConnected_Lakes:LocationBetween_Sprouts-Hobby_Lobby            NA         NA      NA       NA    
-# CategoryCorn_Lake:LocationBetween_Sprouts-Hobby_Lobby                  NA         NA      NA       NA    
-# CategoryGMO:LocationBetween_Sprouts-Hobby_Lobby                        NA         NA      NA       NA    
-# CategoryGrand_Mesa:LocationBetween_Sprouts-Hobby_Lobby                 NA         NA      NA       NA    
-# CategoryHighland_Lake:LocationBetween_Sprouts-Hobby_Lobby              NA         NA      NA       NA    
-# CategoryMoab:LocationBetween_Sprouts-Hobby_Lobby                       NA         NA      NA       NA    
-# CategoryMonument:LocationBetween_Sprouts-Hobby_Lobby                   NA         NA      NA       NA    
-# CategoryRimrock:LocationBetween_Sprouts-Hobby_Lobby                    NA         NA      NA       NA    
-# CategoryRock_Slide:LocationBetween_Sprouts-Hobby_Lobby                 NA         NA      NA       NA    
-# CategoryConnected_Lakes:LocationBoat_Safety                            NA         NA      NA       NA    
-# CategoryCorn_Lake:LocationBoat_Safety                                  NA         NA      NA       NA    
-# CategoryGMO:LocationBoat_Safety                                        NA         NA      NA       NA    
-# CategoryGrand_Mesa:LocationBoat_Safety                                 NA         NA      NA       NA    
-# CategoryHighland_Lake:LocationBoat_Safety                              NA         NA      NA       NA    
-# CategoryMoab:LocationBoat_Safety                                       NA         NA      NA       NA    
-#  [ reached 'max' / getOption("max.print") -- omitted 561 rows ]
-# ---
-# Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-# 
-# Residual standard error: 0.7855 on 334 degrees of freedom
-#   (2 observations deleted due to missingness)
-# Multiple R-squared:  0.8751,	Adjusted R-squared:  0.8467 
-# F-statistic:  30.8 on 76 and 334 DF,  p-value: < 2.2e-16
- 
- 
- 
- 
- # >  anova(lm_location_with_cat)
- # Analysis of Variance Table
- # 
- # Response: SQM
- # Df Sum Sq Mean Sq  F value    Pr(>F)    
- # Moon_Magnitude   1 312.55 312.552 506.5218 < 2.2e-16 ***
- #   Category         9 969.85 107.761 174.6378 < 2.2e-16 ***
- #   Location        66 162.10   2.456   3.9803 < 2.2e-16 ***
- #   Residuals      334 206.10   0.617                       
- # ---
- #   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-
-
  
  
  # We control for the moon so we isolate purely the location's light pollution
@@ -911,7 +902,26 @@ ggplot(comparison_data, aes(x = is_baseline, y = SQM, fill = is_baseline)) +
 
 
 
+# Filtering for New Moon to isolate the Light Dome
+new_moon_data <- sqm_mean %>% filter(Moon_Cycle == "New_Moon")
 
+ggplot(new_moon_data, aes(x = reorder(Category, -SQM), y = SQM, fill = true_dark_baseline)) +
+  geom_boxplot(alpha = 0.8) +
+  scale_y_reverse() + # Standard for SQM to show "up" as darker
+  scale_fill_manual(values = c("FALSE" = "#E69F00", "TRUE" = "#56B4E9"),
+                    labels = c("Light Polluted (Valley)", "True Dark Sky (Baseline)")) +
+  theme_minimal(base_size = 15) +
+  labs(
+    title = "Pure Light Pollution: New Moon Comparison",
+    subtitle = "All differences shown are due to location, not the moon",
+    x = "Location Category",
+    y = expression("SQM (mag/arcsec"^2*")"),
+    fill = "Site Type"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Save it for your LaTeX project
+ggsave("new_moon_boxplot.png", width = 8, height = 5)
 
 
 
