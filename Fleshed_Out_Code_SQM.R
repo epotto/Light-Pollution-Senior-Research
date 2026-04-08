@@ -9,11 +9,14 @@ library(lubridate)
 library(hms)
 library(dplyr)
 
-data <- read.csv("SQM_Readings_for_R.csv", stringsAsFactors = FALSE)
+#data <- read.csv("SQM_Readings_for_R.csv", stringsAsFactors = FALSE)
+data <- read.csv("Research_Data_Final.csv", stringsAsFactors = FALSE)
 
 # ==========================================
 # 2. FILTERING & CALCULATION FUNCTIONS
 # ==========================================
+
+names(data)
 
 manual_filter <- function(data, interactive = FALSE) {
   if (interactive == TRUE) {
@@ -25,7 +28,7 @@ manual_filter <- function(data, interactive = FALSE) {
       max_col <- as.numeric(readline("Enter the max column number you would like to use: "))
     }
   } else {
-    max_col <- 27 
+    max_col <- 36 
   }
   
   dat_filt <- data[, 1:max_col] |>
@@ -49,8 +52,8 @@ manual_calculations <- function(data, interactive = FALSE) {
     # REMOVED: Relative_Humidity
     # ADDED: hour_of_day (so it doesn't get deleted during summarize)
     group_by(reading_group, Night_of, hour_of_day, Location, Date_Time, Category, 
-             Weather_Conditions, Cloud_Cover, Clouds, Moon_Brightness, 
-             Moon_Cycle, Moon_Magnitude, Moon_Altitude, Extra_Variables) |>
+             Weather_Conditions, Cloud_Cover, Clouds, Moon_Brightness, Moon_Magnitude,
+             Moon_Cycle, Moon_Phase_Pcnt, Moon_Alt_Calc, Moon_Az_Calc, Moon_Phase_Name, Extra_Variables) |>
     summarise(
       SQM1_mean = mean(SQM1, na.rm = TRUE),
       SQM2_mean = mean(SQM2, na.rm = TRUE),
@@ -86,13 +89,14 @@ moon_filter <- function(data, site_category = "All") {
   
   clean_data <- data |>
     mutate(
+      Moon_Phase_Pcnt = as.numeric(Moon_Phase_Pcnt),
       Moon_Magnitude = as.numeric(Moon_Magnitude),
       SQM            = as.numeric(SQM),
       variance       = as.numeric(variance),
-      Moon_Altitude  = as.numeric(Moon_Altitude),
+      Moon_Alt_Calc  = as.numeric(Moon_Alt_Calc),
       
-      above       = Moon_Altitude > 0,
-      above_below = ifelse(Moon_Altitude > 0, "Above", "Below")
+      above       = Moon_Alt_Calc > 0,
+      above_below = ifelse(Moon_Alt_Calc > 0, "Above", "Below")
     )
   
   return(clean_data)
@@ -115,27 +119,27 @@ moon_func <- function(data) {
     )
 }
 
-# Locations with multiple acquisitions per night:
-consecutive_sqm <- all_moon_data %>%
-  # 1. Group by your location and the specific night
-  group_by(Category, Location, Night_of) %>%
-  
-  # 2. Filter to keep only groups with more than 1 distinct time entry
-  filter(n_distinct(Date_Time) > 1) %>%
-  
-  # 3. Ungroup so future operations aren't affected by the grouping
-  ungroup() %>%
-  
-  # 4. Optional: Sort the data so it's easy to look at the matching nights side-by-side
-  arrange(Category, Night_of, Date_Time)
-
-# View the first few rows to confirm it worked
-head(consecutive_sqm)
-
-
-#data to only compare Campus vs. Baseline sites
-comparison_data <- all_moon_data |>
-  filter(Category == "CMU" | is_baseline == TRUE)
+# # Locations with multiple acquisitions per night:
+# consecutive_sqm <- all_moon_data %>%
+#   # 1. Group by your location and the specific night
+#   group_by(Category, Location, Night_of) %>%
+#   
+#   # 2. Filter to keep only groups with more than 1 distinct time entry
+#   filter(n_distinct(Date_Time) > 1) %>%
+#   
+#   # 3. Ungroup so future operations aren't affected by the grouping
+#   ungroup() %>%
+#   
+#   # 4. Optional: Sort the data so it's easy to look at the matching nights side-by-side
+#   arrange(Category, Night_of, Date_Time)
+# 
+# # View the first few rows to confirm it worked
+# head(consecutive_sqm)
+# 
+# 
+# #data to only compare Campus vs. Baseline sites
+# comparison_data <- all_moon_data |>
+#   filter(Category == "CMU" | is_baseline == TRUE)
 
 
 bortle_func <- function(data) {
@@ -191,6 +195,12 @@ all_moon_data <- moon_filter(sqm_mean, "All")
 lunar_lm <- lm(SQM ~ above_below, data = all_moon_data)
 summary(lunar_lm)
 
+phase_lunar_lm <- lm(SQM ~ Moon_Phase_Pcnt + above_below, data = all_moon_data)
+summary(phase_lunar_lm)
+
+mag_lunar_lm <- lm(SQM ~ Moon_Magnitude + above_below, data = all_moon_data)
+summary(mag_lunar_lm)
+
 # Model 2: Pure light pollution (New Moon only)
 # Filter for New Moon first
 new_moon_data <- sqm_mean %>% filter(Moon_Cycle == "New_Moon")
@@ -204,7 +214,7 @@ time_lm <- lm(SQM ~ hour_of_day, data = all_moon_data)
 summary(time_lm)
 
 # Test B: Does moon altitude matter?
-altitude_lm <- lm(SQM ~ Moon_Altitude, data = all_moon_data)
+altitude_lm <- lm(SQM ~ Moon_Alt_Calc, data = all_moon_data)
 summary(altitude_lm)
 
 # Model: Interaction between clouds and location
@@ -214,6 +224,21 @@ summary(cloud_lm)
 
 
 
+# Let's get more sophisticated! 
+
+complex_lunar_lm <- lm(SQM ~ Moon_Phase_Pcnt + Moon_Alt_Calc + above_below, data = all_moon_data)
+summary(complex_lunar_lm)
+
+# This shows Moon_Alt_Calc isn't worth keeping for any interaction!
+
+location_lunar_lm <- lm(SQM ~ Moon_Phase_Pcnt + above_below * Category, data = all_moon_data)
+summary(location_lunar_lm)
+
+# This is the best we got so far! A decent representation given the nuance.
+
+# Test if the hour of the night changes the SQM, and if that depends on whether you are in the city
+time_of_night_lm <- lm(SQM ~ hour_of_day + true_dark_baseline, data = all_moon_data)
+summary(time_of_night_lm)
 
 
 # ==========================================
@@ -227,7 +252,7 @@ moon_up_data <- all_moon_data |>
   filter(above_below == "Above")
 
 # Test if altitude and magnitude interact while the moon is up
-moon_extinction_lm <- lm(SQM ~ Moon_Magnitude * Moon_Altitude + true_dark_baseline, data = moon_up_data)
+moon_extinction_lm <- lm(SQM ~ Moon_Magnitude * Moon_Alt_Calc + true_dark_baseline, data = moon_up_data)
 summary(moon_extinction_lm)
 
 
@@ -365,7 +390,6 @@ summary(pure_light_dome_lm)
 
 ggplot(new_moon_data, aes(x = reorder(Category, -SQM), y = SQM, fill = true_dark_baseline)) +
   geom_boxplot(alpha = 0.8) +
-  scale_y_reverse() + # Reverse so darker skies (higher SQM) are at the top
   scale_fill_manual(values = c("FALSE" = "#E69F00", "TRUE" = "#56B4E9"),
                     labels = c("Light Polluted (Valley)", "True Dark Sky (Baseline)")) +
   theme_minimal() +
@@ -380,9 +404,21 @@ ggplot(new_moon_data, aes(x = reorder(Category, -SQM), y = SQM, fill = true_dark
 
 
 
+ggplot(all_moon_data, aes(x = reorder(Category, -SQM), y = SQM, fill = true_dark_baseline)) +
+  geom_boxplot(alpha = 0.8) +
+  scale_fill_manual(values = c("FALSE" = "#E69F00", "TRUE" = "#56B4E9"),
+                    labels = c("Light Polluted (Valley)", "True Dark Sky (Baseline)")) +
+  theme_minimal() +
+  labs(
+    title = "Pure Light Pollution Comparison (New Moon Data Only)",
+    subtitle = "With the moon removed, all differences are due to geographic location",
+    x = "Location Category",
+    y = expression("SQM (mag/arcsec"^2*")"),
+    fill = "Site Type"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-
-
+sqm_outlier <- filter(all_moon_data, SQM > 22)
 
 
 
