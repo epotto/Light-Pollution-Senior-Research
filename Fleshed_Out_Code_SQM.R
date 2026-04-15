@@ -28,7 +28,7 @@ manual_filter <- function(data, interactive = FALSE) {
       max_col <- as.numeric(readline("Enter the max column number you would like to use: "))
     }
   } else {
-    max_col <- 36 
+    max_col <- 32 
   }
   
   dat_filt <- data[, 1:max_col] |>
