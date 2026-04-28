@@ -28,12 +28,12 @@ manual_filter <- function(data, interactive = FALSE) {
       max_col <- as.numeric(readline("Enter the max column number you would like to use: "))
     }
   } else {
-    max_col <- 32 
+    max_col <- 29 
   }
   
   dat_filt <- data[, 1:max_col] |>
     mutate(
-      Date_Time = mdy_hms(paste(Date, Time)),
+      Date_Time = parse_date_time(paste(Date, Time), orders = c("mdy_HMS", "mdy_HM", "ymd_HMS", "ymd_HM")),
       hour_of_day = hour(Date_Time), # Extracts the hour (0-23)
       Night_of = if_else(hour_of_day < 12, 
                          as.Date(Date_Time) - days(1), 
@@ -52,8 +52,9 @@ manual_calculations <- function(data, interactive = FALSE) {
     # REMOVED: Relative_Humidity
     # ADDED: hour_of_day (so it doesn't get deleted during summarize)
     group_by(reading_group, Night_of, hour_of_day, Location, Date_Time, Category, 
-             Weather_Conditions, Cloud_Cover, Clouds, Moon_Brightness, Moon_Magnitude,
-             Moon_Cycle, Moon_Phase_Pcnt, Moon_Alt_Calc, Moon_Az_Calc, Moon_Phase_Name, Extra_Variables) |>
+             Weather_Conditions, Cloud_Cover, Clouds, Moon_Phase_Pcnt, 
+             Moon_Alt_Calc, Moon_Az_Calc, Moon_Phase_Name, Phase_Angle_Calc,
+             Moon_Magnitude, Extra_Variables, Sun_Alt_Calc) |>
     summarise(
       SQM1_mean = mean(SQM1, na.rm = TRUE),
       SQM2_mean = mean(SQM2, na.rm = TRUE),
@@ -78,7 +79,7 @@ extract_extra_variables <- function(data) {
       greenhouse_on  = str_detect(Extra_Variables, "Greenhouse_On"),
       stadium_off    = str_detect(Extra_Variables, "Stadium_Off"),
       # NEW: Establishes your true dark skies
-      true_dark_baseline = if_else(Category %in% c("GMO", "Highland_Lake", "Grand_Mesa", "Monument", "Moab"), TRUE, FALSE)
+      true_dark_baseline = if_else(Category %in% c("GMO", "Highline_Lake", "Grand_Mesa", "Monument", "Moab"), TRUE, FALSE)
     )
 }
 
@@ -105,38 +106,23 @@ moon_filter <- function(data, site_category = "All") {
 moon_func <- function(data) {
   data |>
     mutate(
-      Phase_Num = case_when(
-        Moon_Cycle == "New_Moon" ~ 1,
-        Moon_Cycle == "Waxing_Crescent" ~ 2,
-        Moon_Cycle == "First_Quarter" ~ 3,
-        Moon_Cycle == "Waxing_Gibbous" ~ 4,
-        Moon_Cycle == "Full_Moon" ~ 5,
-        Moon_Cycle == "Waning_Gibbous" ~ 6,
-        Moon_Cycle %in% c("Last_Quarter", "Third Quarter") ~ 7, 
-        Moon_Cycle == "Waning_Crescent" ~ 8,
+      # Notice we are creating Moon_Phase_Num, leaving Moon_Phase_Name alone!
+      Moon_Phase_Num = case_when(
+        Moon_Phase_Name == "New_Moon" ~ 1,
+        Moon_Phase_Name == "Waxing_Crescent" ~ 2,
+        Moon_Phase_Name == "First_Quarter" ~ 3,
+        Moon_Phase_Name == "Waxing_Gibbous" ~ 4,
+        Moon_Phase_Name == "Full_Moon" ~ 5,
+        Moon_Phase_Name == "Waning_Gibbous" ~ 6,
+        Moon_Phase_Name %in% c("Last_Quarter", "Third Quarter") ~ 7, 
+        Moon_Phase_Name == "Waning_Crescent" ~ 8,
         TRUE ~ NA_real_ 
       )
     )
 }
 
-# # Locations with multiple acquisitions per night:
-# consecutive_sqm <- all_moon_data %>%
-#   # 1. Group by your location and the specific night
-#   group_by(Category, Location, Night_of) %>%
-#   
-#   # 2. Filter to keep only groups with more than 1 distinct time entry
-#   filter(n_distinct(Date_Time) > 1) %>%
-#   
-#   # 3. Ungroup so future operations aren't affected by the grouping
-#   ungroup() %>%
-#   
-#   # 4. Optional: Sort the data so it's easy to look at the matching nights side-by-side
-#   arrange(Category, Night_of, Date_Time)
-# 
-# # View the first few rows to confirm it worked
-# head(consecutive_sqm)
-# 
-# 
+
+
 # #data to only compare Campus vs. Baseline sites
 # comparison_data <- all_moon_data |>
 #   filter(Category == "CMU" | is_baseline == TRUE)
@@ -185,6 +171,40 @@ apt_moon_data <- moon_filter(sqm_mean, "Rock_Slide")
 all_moon_data <- moon_filter(sqm_mean, "All")
 
 
+clean_moon_data <- subset(all_moon_data, Sun_Alt_Calc <= -18)
+
+cat_avg <- aggregate(SQM ~ Category, data = clean_moon_data, FUN = mean)
+
+summary_stats <- clean_moon_data %>%
+  group_by(Category) %>%
+  summarize(
+    Mean_SQM = mean(SQM, na.rm = TRUE),
+    Variance = mean(variance, na.rm = TRUE),          # <--- Here is your variance
+    Standard_Error = sd(SQM, na.rm = TRUE) / sqrt(n())
+  )
+
+
+
+names(all_moon_data)
+
+display_data <- all_moon_data |>
+  reframe(Category, Location, Date_Time, SQM, variance, Night_of, hour_of_day, Moon_Magnitude, Moon_Phase_Pcnt, 
+          is_baseline, is_car_on, Moon_Alt_Calc, Moon_Az_Calc, Moon_Phase_Name, true_dark_baseline, Sun_Alt_Calc,
+          Bortle_Class, Bortle_Desc, above, above_below)
+
+
+
+# ==========================================
+# Weighted Non-Linear Least Squares (WNLS)
+# ==========================================
+
+# We will use nls() (Non-Linear Least Squares)
+# This is the first, basic approach:
+
+lunar_nls <- nls(SQM ~ above_below, data = clean_moon_data)
+summary(lunar_nls)
+
+
 
 
 # ==========================================
@@ -192,14 +212,166 @@ all_moon_data <- moon_filter(sqm_mean, "All")
 # ==========================================
 
 # Model 1: The Lunar Impact (Using full moon dataset)
-lunar_lm <- lm(SQM ~ above_below, data = all_moon_data)
+lunar_lm <- lm(SQM ~ a + b * above, 
+               data = clean_moon_data,
+               start = list(a = 16, b = 1))
 summary(lunar_lm)
 
-phase_lunar_lm <- lm(SQM ~ Moon_Phase_Pcnt + above_below, data = all_moon_data)
-summary(phase_lunar_lm)
 
-mag_lunar_lm <- lm(SQM ~ Moon_Magnitude + above_below, data = all_moon_data)
-summary(mag_lunar_lm)
+lunar_wnls <- nls(SQM ~ base_sqm + Above * as.logical(above), 
+                  data = clean_moon_data,
+                  start = list(base_sqm = 16.59, Above = -1),
+                  # This single line makes it a WNLS model
+                  weights = variance)
+
+summary(lunar_wnls)
+
+
+
+# Fitting the non-linear opposition surge
+ks_nls <- nls(SQM ~ base_sqm + phase_angle * (Phase_Angle_Calc^4), 
+              data = clean_moon_data,
+              start = list(base_sqm = 16.59, phase_angle = 0.0001),
+              weights = variance)
+summary(ks_nls)
+
+
+
+
+
+new_moon_data <- sqm_mean %>% filter(Moon_Phase_Name == "New Moon")
+
+summary(lm(SQM ~ true_dark_baseline, data = new_moon_data))
+
+
+summary(lm(SQM ~ hour_of_day, data = clean_moon_data))
+
+summary(lm(SQM ~ true_dark_baseline, data = clean_moon_data))
+
+
+
+# Satellite: 
+
+satellite_data <- aggregate(SQM ~ Category, data = clean_moon_data, FUN = mean)
+
+clean_cmu_data <- clean_moon_data |>
+  filter(Category == "CMU")
+
+cmu_satellite_data <- aggregate(SQM ~ Location, data = clean_moon_data, FUN = mean)
+
+
+library(ggplot2)
+library(ggplot2)
+
+# Scatter plot of SQM vs Moon Phase, with model lines automatically overlaid
+ggplot(all_moon_data, aes(x = Moon_Magnitude, y = SQM, color = above_below)) +
+  # The scatter plot of your cleaned moon data
+  geom_point(alpha = 0.5, size = 2) + 
+  
+  # This single line automatically calculates and overlays the linear model (lm) lines 
+  # for your groups without needing the raw coefficients
+  geom_smooth(method = "lm", se = FALSE, linewidth = 1.2) +
+  
+  labs(
+    title = "Impact of Moon Phase on Sky Brightness",
+    x = "Moon Phase (%)",
+    y = "Sky Quality Meter (SQM)",
+    color = "Above/Below Category"
+  ) +
+  
+  theme_minimal(base_size = 16) + 
+  theme(
+    legend.position = "top",
+    plot.title = element_text(face = "bold")
+  )
+
+
+# Not relivant (adj R^2 0.1 less than moon_mag)
+
+# phase_lunar_lm <- lm(SQM ~ Moon_Phase_Pcnt + above_below, data = all_moon_data)
+# summary(phase_lunar_lm)
+
+# mag_lunar_lm <- lm(SQM ~ Moon_Magnitude + above_below, data = all_moon_data)
+# summary(mag_lunar_lm)
+
+# This is not additive since it creates a paradox?
+
+# Watch out for the sun! 
+
+# ** Do NOT Let there be light :O **
+
+# Keep only data where the sun is fully below -18 degrees (true astronomical night)
+clean_moon_data <- subset(all_moon_data, Sun_Alt_Calc <= -18)
+
+
+best_moon_lm <- lm(SQM ~ Moon_Magnitude * above_below, data = clean_moon_data)
+summary(best_moon_lm)
+
+
+
+summary(lm(SQM ~ Moon_Magnitude * Moon_Alt_Calc, data = clean_moon_data))
+
+
+# Same day
+
+
+# # Locations with multiple acquisitions per night:
+consecutive_sqm <- clean_moon_data %>%
+  # 1. Group by your location and the specific night
+  group_by(Category, Location, Night_of) %>%
+  
+  # 2. Filter to keep only groups with more than 1 distinct time entry
+  filter(n_distinct(Date_Time) > 1) %>%
+  
+  # 3. Ungroup so future operations aren't affected by the grouping
+  ungroup() %>%
+  
+  # 4. Optional: Sort the data so it's easy to look at the matching nights side-by-side
+  arrange(Category, Night_of, Date_Time)
+
+# View the first few rows to confirm it worked
+head(consecutive_sqm)
+
+
+same_day_lm <- lm(SQM ~ Moon_Magnitude + Moon_Alt_Calc * Category, data = consecutive_sqm)
+summary(same_day_lm)
+anova(same_day_lm)
+
+
+
+
+
+
+ggplot(data = all_moon_data, aes(x = Moon_Magnitude, y = SQM, color = above_below)) + 
+  scale_x_reverse() +
+  ylim(12, 17) +
+  geom_point(size = 4.5) +
+  geom_errorbar(aes(ymin = SQM - variance, ymax = SQM + variance), color = "grey40", width = 0.25) +
+  
+  # --- ADDED: The linear model overlay ---
+  geom_smooth(method = "lm", se = FALSE, linewidth = 1.2) +
+  
+  labs(
+    title = "SQM vs Moon Brightness (All Locations)",
+    color = "Moon Above Horizon", 
+    x = "Moon Magnitude", 
+    y = expression("SQM (mag/arcsec"^2*")")
+  ) +
+  annotate("segment", x = -12.7, xend = -12.7, y = 12.5, yend = 12, color = "black", linewidth = 1) +
+  annotate("text", x = -12.3, y = 13.0, label = "Full Moon", color ="black", angle = 0, hjust = 0, size = 3.5) +
+  annotate("segment", x = -10, xend = -10, y = 12.5, yend = 12, color = "black", linewidth = 1) +
+  annotate("text", x = -9.5, y = 13.0, label = "First Quarter", color ="black", angle = 0, hjust = 0, size = 3.5) +
+  annotate("segment", x = -6, xend = -6, y = 12.5, yend = 12, color = "black", linewidth = 1) +
+  annotate("text", x = -5.3, y = 13.0, label = "Crescent Moon", color ="black", angle = 0, hjust = 0, size = 3.5)
+
+
+
+
+ggplot(data = clean_moon_data, 
+       aes(x = Moon_Magnitude * above_below, 
+           y = SQM)) +
+  geom_point()
+
 
 # Model 2: Pure light pollution (New Moon only)
 # Filter for New Moon first
@@ -210,7 +382,7 @@ summary(light_dome_lm)
 
 
 # Test A: Does the city get darker late at night?
-time_lm <- lm(SQM ~ hour_of_day, data = all_moon_data)
+time_lm <- lm(SQM ~ hour_of_day, data = clean_moon_data)
 summary(time_lm)
 
 # Test B: Does moon altitude matter?
@@ -222,22 +394,81 @@ cloud_lm <- lm(SQM ~ Cloud_Cover + true_dark_baseline, data = all_moon_data)
 summary(cloud_lm)
 
 
+ggplot(data = all_moon_data, aes(x = as_hms(Date_Time), y = SQM)) +
+  geom_point(size = 4, alpha = 0.7) + 
+  geom_errorbar(aes(ymin = SQM - variance, ymax = SQM + variance), color = "grey50", width = 300) +
+  
+  # --- ADDED: The linear model overlay (color set manually to stand out) ---
+  geom_smooth(method = "lm", se = FALSE, color = "#F8766D", linewidth = 1.2) +
+  
+  scale_x_time(name = "Time of Night", breaks = hms::hms(hours = c(0, 4, 8, 12, 16, 20, 24))) +
+  coord_cartesian(ylim = c(14, 22)) + 
+  labs(title = "SQM Readings Over Time (All Locations)",
+       subtitle = "Data grouped by time of acquisition") +
+  theme_minimal()
+
+ggplot(clean_moon_data, aes(sample = SQM)) +
+  stat_qq() +
+  stat_qq_line(color = "blue") +
+  labs(title = "Normal Q-Q Plot", x = "Theoretical", y = "Sample") +
+  theme_minimal()
+
+
+# Generates just the Scale-Location plot
+plot(location_lunar_lm, which = 3, 
+     main = "Scale-Location: Variance Check")
+
+
+# Install and load the lmtest package if you haven't already
+# install.packages("lmtest")
+library(lmtest)
+
+
+# Run the Breusch-Pagan test for homoscedasticity
+bptest(location_lunar_lm)
+
+
+
+
+ggplot(data = all_moon_data, aes(x = Moon_Magnitude, y = SQM, color = above_below)) + 
+  scale_x_reverse() +
+  ylim(12, 17) +
+  geom_point(size = 4.5) +
+  geom_errorbar(aes(ymin = SQM - variance, ymax = SQM + variance), color = "grey40", width = 0.25) +
+  
+  # --- ADDED: The linear model overlay ---
+  geom_smooth(method = "lm", se = FALSE, linewidth = 1.2) +
+  
+  labs(
+    title = "SQM vs Moon Brightness (All Locations)",
+    color = "Moon Above Horizon", 
+    x = "Moon Magnitude", 
+    y = expression("SQM (mag/arcsec"^2*")")
+  ) +
+  annotate("segment", x = -12.7, xend = -12.7, y = 12.5, yend = 12, color = "black", linewidth = 1) +
+  annotate("text", x = -12.3, y = 13.0, label = "Full Moon", color ="black", angle = 0, hjust = 0, size = 3.5) +
+  annotate("segment", x = -10, xend = -10, y = 12.5, yend = 12, color = "black", linewidth = 1) +
+  annotate("text", x = -9.5, y = 13.0, label = "First Quarter", color ="black", angle = 0, hjust = 0, size = 3.5) +
+  annotate("segment", x = -6, xend = -6, y = 12.5, yend = 12, color = "black", linewidth = 1) +
+  annotate("text", x = -5.3, y = 13.0, label = "Crescent Moon", color ="black", angle = 0, hjust = 0, size = 3.5)
+
+
 
 
 # Let's get more sophisticated! 
 
-complex_lunar_lm <- lm(SQM ~ Moon_Phase_Pcnt + Moon_Alt_Calc + above_below, data = all_moon_data)
+complex_lunar_lm <- lm(SQM ~ Moon_Phase_Pcnt + Moon_Alt_Calc + above_below, data = clean_moon_data)
 summary(complex_lunar_lm)
 
 # This shows Moon_Alt_Calc isn't worth keeping for any interaction!
 
-location_lunar_lm <- lm(SQM ~ Moon_Phase_Pcnt + above_below * Category, data = all_moon_data)
+location_lunar_lm <- lm(SQM ~ Moon_Magnitude + Moon_Alt_Calc * Category, data = clean_moon_data)
 summary(location_lunar_lm)
 
 # This is the best we got so far! A decent representation given the nuance.
 
 # Test if the hour of the night changes the SQM, and if that depends on whether you are in the city
-time_of_night_lm <- lm(SQM ~ hour_of_day + true_dark_baseline, data = all_moon_data)
+time_of_night_lm <- lm(SQM ~ hour_of_day + true_dark_baseline, data = clean_moon_data)
 summary(time_of_night_lm)
 
 
@@ -271,25 +502,7 @@ bortle_lm <- lm(Bortle_Class ~ above_below + true_dark_baseline, data = all_moon
 summary(bortle_lm)
 
 
-# Call:
-#   lm(formula = Bortle_Class ~ above_below + true_dark_baseline, 
-#      data = all_moon_data)
-# 
-# Residuals:
-#   Min      1Q  Median      3Q     Max 
-# -3.3078 -0.3078 -0.1553  0.6922  2.8447 
-# 
-# Coefficients:
-#   Estimate Std. Error t value Pr(>|t|)    
-# (Intercept)             8.81803    0.07753 113.735  < 2e-16 ***
-#   above_belowBelow       -0.51021    0.08656  -5.894 7.87e-09 ***
-#   true_dark_baselineTRUE -4.15257    0.08320 -49.914  < 2e-16 ***
-#   ---
-#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-# 
-# Residual standard error: 0.7263 on 410 degrees of freedom
-# Multiple R-squared:  0.8637,	Adjusted R-squared:  0.863 
-# F-statistic:  1299 on 2 and 410 DF,  p-value: < 2.2e-16
+
 
 
 
@@ -323,33 +536,6 @@ summary(pure_light_dome_lm)
 
 
 
-# Call:
-#   lm(formula = SQM ~ true_dark_baseline, data = new_moon_data)
-# 
-# Residuals:
-#   Min      1Q  Median      3Q     Max 
-# -3.0983 -0.2266  0.2213  0.5010  2.0033 
-# 
-# Coefficients:
-#   Estimate Std. Error
-# (Intercept)             17.9450     0.1503
-# true_dark_baselineTRUE   3.1528     0.2761
-# t value Pr(>|t|)    
-# (Intercept)             119.39  < 2e-16 ***
-#   true_dark_baselineTRUE   11.42 8.77e-16 ***
-#   ---
-#   Signif. codes:  
-#   0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-# 
-# Residual standard error: 0.9265 on 52 degrees of freedom
-# Multiple R-squared:  0.7149,	Adjusted R-squared:  0.7094 
-# F-statistic: 130.4 on 1 and 52 DF,  p-value: 8.769e-16
-
-
-
-
-
-
 
 # Create a dataset where the moon doesn't exist
 new_moon_data <- sqm_mean |>
@@ -363,28 +549,7 @@ pure_light_dome_lm <- lm(SQM ~ Category, data = new_moon_data)
 summary(pure_light_dome_lm)
 
 
-# Call:
-#   lm(formula = SQM ~ Category, data = new_moon_data)
-# 
-# Residuals:
-#   Min       1Q   Median       3Q      Max 
-# -2.76002 -0.02628  0.04369  0.47623  0.68165 
-# 
-# Coefficients:
-#   Estimate Std. Error t value Pr(>|t|)    
-# (Intercept)              17.9384     0.1318 136.062  < 2e-16 ***
-#   CategoryConnected_Lakes   1.3350     0.7910   1.688 0.098109 .  
-# CategoryCorn_Lake         2.0100     0.7910   2.541 0.014416 *  
-#   CategoryGMO               3.3665     0.3229  10.425 8.23e-14 ***
-#   CategoryHighland_Lake     3.2275     0.5671   5.692 7.86e-07 ***
-#   CategoryMonument          2.9330     0.3229   9.082 6.51e-12 ***
-#   CategoryRock_Slide       -3.0917     0.7910  -3.908 0.000297 ***
-#   ---
-#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-# 
-# Residual standard error: 0.78 on 47 degrees of freedom
-# Multiple R-squared:  0.8174,	Adjusted R-squared:  0.7941 
-# F-statistic: 35.06 on 6 and 47 DF,  p-value: 9.432e-16
+
 
 
 
@@ -404,13 +569,34 @@ ggplot(new_moon_data, aes(x = reorder(Category, -SQM), y = SQM, fill = true_dark
 
 
 
-ggplot(all_moon_data, aes(x = reorder(Category, -SQM), y = SQM, fill = true_dark_baseline)) +
+ggplot(clean_moon_data, aes(x = reorder(Category, -SQM), y = SQM, fill = true_dark_baseline)) +
   geom_boxplot(alpha = 0.8) +
   scale_fill_manual(values = c("FALSE" = "#E69F00", "TRUE" = "#56B4E9"),
                     labels = c("Light Polluted (Valley)", "True Dark Sky (Baseline)")) +
   theme_minimal() +
   labs(
-    title = "Pure Light Pollution Comparison (New Moon Data Only)",
+    title = "Pure Light Pollution Comparison (All Moon Data)",
+    subtitle = "With the moon removed, all differences are due to geographic location",
+    x = "Location Category",
+    y = expression("SQM (mag/arcsec"^2*")"),
+    fill = "Site Type"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+sqm_outlier <- filter(all_moon_data, SQM > 22)
+
+
+boxplot_data <- clean_moon_data |>
+  filter(Category != "Moab" & Category != "Grand_Mesa" & Category != "Connected_Lakes")
+
+
+ggplot(boxplot_data, aes(x = reorder(Category, -SQM), y = SQM, fill = true_dark_baseline)) +
+  geom_boxplot(alpha = 0.8) +
+  scale_fill_manual(values = c("FALSE" = "#E69F00", "TRUE" = "#56B4E9"),
+                    labels = c("Light Polluted (Valley)", "True Dark Sky (Baseline)")) +
+  theme_minimal() +
+  labs(
+    title = "Pure Light Pollution Comparison (All Moon Data)",
     subtitle = "With the moon removed, all differences are due to geographic location",
     x = "Location Category",
     y = expression("SQM (mag/arcsec"^2*")"),
@@ -422,49 +608,11 @@ sqm_outlier <- filter(all_moon_data, SQM > 22)
 
 
 
-
-
 all_moon_horiz_lm <- lm(SQM ~ Moon_Magnitude + above_below, data = all_moon_data)
 summary(all_moon_horiz_lm)
 anova(all_moon_horiz_lm)
 
 
-# Call:
-#   lm(formula = SQM ~ Moon_Magnitude + above_below, data = all_moon_data)
-# 
-# Residuals:
-#   Min      1Q  Median      3Q     Max 
-# -5.0147 -1.2364 -0.0010  0.8723  3.6452 
-# 
-# Coefficients:
-#   Estimate Std. Error t value Pr(>|t|)    
-# (Intercept)       20.3870     0.5191  39.276  < 2e-16 ***
-#   Moon_Magnitude     0.2939     0.0399   7.367 9.78e-13 ***
-#   above_belowBelow   0.7877     0.2373   3.319 0.000984 ***
-#   ---
-#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-# 
-# Residual standard error: 1.787 on 408 degrees of freedom
-# (2 observations deleted due to missingness)
-# Multiple R-squared:  0.2107,	Adjusted R-squared:  0.2068 
-# F-statistic: 54.45 on 2 and 408 DF,  p-value: < 2.2e-16
-
-
-#
-
-# > anova(all_moon_horiz_lm)
-# Analysis of Variance Table
-# 
-# Response: SQM
-# Df  Sum Sq Mean Sq F value    Pr(>F)    
-# Moon_Magnitude   1  312.55 312.552  97.877 < 2.2e-16 ***
-#   above_below      1   35.18  35.180  11.017  0.000984 ***
-#   Residuals      408 1302.87   3.193                      
-# ---
-#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-
-
-#
 
 
 
@@ -472,36 +620,6 @@ all_moon_above_lm <- lm(SQM ~ above_below, data = all_moon_data)
 summary(all_moon_above_lm)
 anova(all_moon_above_lm)
 
-
-# Call:
-#   lm(formula = SQM ~ above_below, data = all_moon_data)
-# 
-# Residuals:
-#   Min      1Q  Median      3Q     Max 
-# -5.1087 -1.2179 -0.1904  0.7824  4.0624 
-# 
-# Coefficients:
-#   Estimate Std. Error t value Pr(>|t|)    
-# (Intercept)       16.8209     0.1991   84.48  < 2e-16 ***
-#   above_belowBelow   1.5762     0.2255    6.99 1.12e-11 ***
-#   ---
-#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-# 
-# Residual standard error: 1.899 on 411 degrees of freedom
-# Multiple R-squared:  0.1063,	Adjusted R-squared:  0.1041 
-# F-statistic: 48.86 on 1 and 411 DF,  p-value: 1.116e-11
-
-#
-
-# > anova(all_moon_above_lm)
-# Analysis of Variance Table
-# 
-# Response: SQM
-# Df  Sum Sq Mean Sq F value    Pr(>F)    
-# above_below   1  176.26 176.259  48.862 1.116e-11 ***
-#   Residuals   411 1482.61   3.607                      
-# ---
-#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
 
 
@@ -514,43 +632,7 @@ summary(category_above_lm)
 
 
 
-# Call:
-#   lm(formula = SQM ~ Moon_Magnitude + above_below * Category, data = all_moon_data)
-# 
-# Residuals:
-#   Min      1Q  Median      3Q     Max 
-# -3.1212 -0.3914  0.1033  0.5685  2.3110 
-# 
-# Coefficients: (7 not defined because of singularities)
-# Estimate Std. Error t value Pr(>|t|)    
-# (Intercept)                              16.77418    0.27514  60.967  < 2e-16 ***
-#   Moon_Magnitude                            0.05063    0.02030   2.495  0.01301 *  
-#   above_belowBelow                          1.43134    0.13608  10.518  < 2e-16 ***
-#   CategoryConnected_Lakes                   1.30681    0.85867   1.522  0.12883    
-# CategoryCorn_Lake                         1.10382    0.49541   2.228  0.02643 *  
-#   CategoryGMO                               4.46179    0.24115  18.502  < 2e-16 ***
-#   CategoryGrand_Mesa                        3.39123    0.60442   5.611 3.79e-08 ***
-#   CategoryHighland_Lake                     3.52799    0.32811  10.752  < 2e-16 ***
-#   CategoryMoab                              3.70205    0.23904  15.487  < 2e-16 ***
-#   CategoryMonument                          2.68879    0.15929  16.879  < 2e-16 ***
-#   CategoryRimrock                          -1.52711    0.20069  -7.609 2.02e-13 ***
-#   CategoryRock_Slide                       -0.80211    0.25200  -3.183  0.00157 ** 
-#   above_belowBelow:CategoryConnected_Lakes       NA         NA      NA       NA    
-# above_belowBelow:CategoryCorn_Lake             NA         NA      NA       NA    
-# above_belowBelow:CategoryGMO             -1.01821    0.29435  -3.459  0.00060 ***
-#   above_belowBelow:CategoryGrand_Mesa            NA         NA      NA       NA    
-# above_belowBelow:CategoryHighland_Lake         NA         NA      NA       NA    
-# above_belowBelow:CategoryMoab                  NA         NA      NA       NA    
-# above_belowBelow:CategoryMonument              NA         NA      NA       NA    
-# above_belowBelow:CategoryRimrock               NA         NA      NA       NA    
-# above_belowBelow:CategoryRock_Slide      -0.91725    0.32479  -2.824  0.00498 ** 
-#   ---
-#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-# 
-# Residual standard error: 0.8503 on 397 degrees of freedom
-# (2 observations deleted due to missingness)
-# Multiple R-squared:  0.8261,	Adjusted R-squared:  0.8204 
-# F-statistic: 145.1 on 13 and 397 DF,  p-value: < 2.2e-16
+
 
 
 # Testing for Moon_Altitude * Moon_Magnitude:
@@ -559,64 +641,8 @@ category_above_lm <- lm(formula = SQM ~ (Moon_Magnitude*Moon_Altitude) + (above_
 summary(category_above_lm)
 anova(category_above_lm)
 
-# Call:
-#   lm(formula = SQM ~ (Moon_Magnitude * Moon_Altitude) + (above_below * 
-#                                                            Category), data = all_moon_data)
-# 
-# Residuals:
-#   Min      1Q  Median      3Q     Max 
-# -3.2407 -0.3498  0.0731  0.5489  2.1681 
-# 
-# Coefficients: (7 not defined because of singularities)
-# Estimate Std. Error t value Pr(>|t|)    
-# (Intercept)                              18.542825   0.634862  29.208  < 2e-16 ***
-#   Moon_Magnitude                            0.164553   0.042124   3.906 0.000110 ***
-#   Moon_Altitude                             0.039699   0.012971   3.061 0.002359 ** 
-#   above_belowBelow                          0.820312   0.238321   3.442 0.000639 ***
-#   CategoryConnected_Lakes                   1.736325   0.861933   2.014 0.044639 *  
-#   CategoryCorn_Lake                         1.266559   0.493475   2.567 0.010637 *  
-#   CategoryGMO                               3.934302   0.293418  13.409  < 2e-16 ***
-#   CategoryGrand_Mesa                        3.490293   0.599517   5.822 1.21e-08 ***
-#   CategoryHighland_Lake                     3.670618   0.328221  11.183  < 2e-16 ***
-#   CategoryMoab                              3.875029   0.243290  15.928  < 2e-16 ***
-#   CategoryMonument                          2.823530   0.163626  17.256  < 2e-16 ***
-#   CategoryRimrock                          -1.463935   0.199898  -7.323 1.37e-12 ***
-#   CategoryRock_Slide                       -0.987417   0.256642  -3.847 0.000139 ***
-#   Moon_Magnitude:Moon_Altitude              0.003763   0.001226   3.070 0.002288 ** 
-#   above_belowBelow:CategoryConnected_Lakes        NA         NA      NA       NA    
-# above_belowBelow:CategoryCorn_Lake              NA         NA      NA       NA    
-# above_belowBelow:CategoryGMO             -0.390909   0.354858  -1.102 0.271309    
-# above_belowBelow:CategoryGrand_Mesa             NA         NA      NA       NA    
-# above_belowBelow:CategoryHighland_Lake          NA         NA      NA       NA    
-# above_belowBelow:CategoryMoab                   NA         NA      NA       NA    
-# above_belowBelow:CategoryMonument               NA         NA      NA       NA    
-# above_belowBelow:CategoryRimrock                NA         NA      NA       NA    
-# above_belowBelow:CategoryRock_Slide      -0.557533   0.341954  -1.630 0.103807    
-# ---
-#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-# 
-# Residual standard error: 0.8422 on 395 degrees of freedom
-# (2 observations deleted due to missingness)
-# Multiple R-squared:  0.8303,	Adjusted R-squared:  0.8238 
-# F-statistic: 128.8 on 15 and 395 DF,  p-value: < 2.2e-16
 
 
-
-
-# > anova(category_above_lm)
-# Analysis of Variance Table
-# 
-# Response: SQM
-# Df  Sum Sq Mean Sq  F value    Pr(>F)    
-# Moon_Magnitude                 1  312.55 312.552 440.6852 < 2.2e-16 ***
-#   Moon_Altitude                  1    2.57   2.568   3.6215   0.05777 .  
-# above_below                    1   32.85  32.845  46.3108 3.758e-11 ***
-#   Category                       9 1003.58 111.509 157.2223 < 2.2e-16 ***
-#   Moon_Magnitude:Moon_Altitude   1   16.75  16.753  23.6216 1.695e-06 ***
-#   above_below:Category           2    2.15   1.076   1.5173   0.22058    
-# Residuals                    395  280.15   0.709                       
-# ---
-#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
 
 # Testing if the Moon's effect changes depending on the Location
@@ -626,90 +652,12 @@ summary(light_pollution_lm)
 anova(light_pollution_lm)
 
 
-# Call:
-#   lm(formula = SQM ~ Moon_Magnitude * Category, data = all_moon_data)
-# 
-# Residuals:
-#   Min      1Q  Median      3Q     Max 
-# -3.2193 -0.3976  0.0892  0.7075  1.9883 
-# 
-# Coefficients: (1 not defined because of singularities)
-# Estimate Std. Error t value Pr(>|t|)    
-# (Intercept)                              18.89925    0.25234  74.897  < 2e-16 ***
-#   Moon_Magnitude                            0.15018    0.02347   6.398 4.50e-10 ***
-#   CategoryConnected_Lakes                   1.08294    0.97371   1.112   0.2667    
-# CategoryCorn_Lake                         2.26809    1.78850   1.268   0.2055    
-# CategoryGMO                               2.93937    0.62481   4.704 3.54e-06 ***
-#   CategoryGrand_Mesa                       58.95241 1269.32907   0.046   0.9630    
-# CategoryHighland_Lake                     2.03705    1.62701   1.252   0.2113    
-# CategoryMoab                              8.88923   22.37083   0.397   0.6913    
-# CategoryMonument                          3.38994    0.82609   4.104 4.95e-05 ***
-#   CategoryRimrock                          -4.55460    2.27533  -2.002   0.0460 *  
-#   CategoryRock_Slide                       -2.32082    1.26603  -1.833   0.0675 .  
-# Moon_Magnitude:CategoryConnected_Lakes         NA         NA      NA       NA    
-# Moon_Magnitude:CategoryCorn_Lake          0.11887    0.19902   0.597   0.5507    
-# Moon_Magnitude:CategoryGMO               -0.06168    0.06594  -0.935   0.3502    
-# Moon_Magnitude:CategoryGrand_Mesa         5.93315  136.12106   0.044   0.9653    
-# Moon_Magnitude:CategoryHighland_Lake     -0.19251    0.18407  -1.046   0.2963    
-# Moon_Magnitude:CategoryMoab               0.66012    2.88948   0.228   0.8194    
-# Moon_Magnitude:CategoryMonument           0.05756    0.08975   0.641   0.5217    
-# Moon_Magnitude:CategoryRimrock           -0.31699    0.21104  -1.502   0.1339    
-# Moon_Magnitude:CategoryRock_Slide        -0.07167    0.11290  -0.635   0.5259    
-# ---
-#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-# 
-# Residual standard error: 0.9625 on 392 degrees of freedom
-# (2 observations deleted due to missingness)
-# Multiple R-squared:   0.78,	Adjusted R-squared:  0.7699 
-# F-statistic:  77.2 on 18 and 392 DF,  p-value: < 2.2e-16
 
-
-
-
- 
-# > anova(light_pollution_lm)
-# Analysis of Variance Table
-# 
-# Response: SQM
-# Df Sum Sq Mean Sq  F value Pr(>F)    
-# Moon_Magnitude            1 312.55 312.552 337.3663 <2e-16 ***
-#   Category                  9 969.85 107.761 116.3167 <2e-16 ***
-#   Moon_Magnitude:Category   8   5.03   0.629   0.6784 0.7106    
-# Residuals               392 363.17   0.926                    
-# ---
-#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
 
 lm_location_clean <- lm(SQM ~ Moon_Magnitude + Category, data = all_moon_data)
 summary(lm_location_clean)
 
-# Call:
-#   lm(formula = SQM ~ Moon_Magnitude + Category, data = all_moon_data)
-# 
-# Residuals:
-#   Min      1Q  Median      3Q     Max 
-# -3.1466 -0.4652  0.1114  0.6755  2.0582 
-# 
-# Coefficients:
-#   Estimate Std. Error t value Pr(>|t|)    
-# (Intercept)             18.79230    0.22194  84.671  < 2e-16 ***
-#   Moon_Magnitude           0.13993    0.02047   6.837 3.04e-11 ***
-#   CategoryConnected_Lakes  1.14151    0.96841   1.179   0.2392    
-# CategoryCorn_Lake        1.27667    0.55859   2.286   0.0228 *  
-#   CategoryGMO              3.50772    0.15955  21.985  < 2e-16 ***
-#   CategoryGrand_Mesa       3.63716    0.68147   5.337 1.58e-07 ***
-#   CategoryHighland_Lake    3.70701    0.36958  10.030  < 2e-16 ***
-#   CategoryMoab             3.80657    0.26912  14.144  < 2e-16 ***
-#   CategoryMonument         2.89485    0.17812  16.252  < 2e-16 ***
-#   CategoryRimrock         -1.15544    0.22293  -5.183 3.47e-07 ***
-#   CategoryRock_Slide      -1.53018    0.17814  -8.590  < 2e-16 ***
-#   ---
-#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-# 
-# Residual standard error: 0.9594 on 400 degrees of freedom
-# (2 observations deleted due to missingness)
-# Multiple R-squared:  0.7769,	Adjusted R-squared:  0.7714 
-# F-statistic: 139.3 on 10 and 400 DF,  p-value: < 2.2e-16
 
 
 
@@ -720,28 +668,6 @@ summary(lm_location_clean)
  summary(baseline_lm)
  
  
- # Call:
- #   lm(formula = SQM ~ Moon_Magnitude + above_below + is_baseline, 
- #      data = comparison_data)
- # 
- # Residuals:
- #   Min      1Q  Median      3Q     Max 
- # -3.0227 -0.4384  0.2406  0.6802  2.0481 
- # 
- # Coefficients:
- #   Estimate Std. Error t value Pr(>|t|)    
- # (Intercept)      17.15896    0.29328  58.508  < 2e-16 ***
- #   Moon_Magnitude    0.06164    0.02203   2.798  0.00544 ** 
- #   above_belowBelow  1.07561    0.13149   8.180 5.72e-15 ***
- #   is_baselineTRUE   3.25112    0.11620  27.978  < 2e-16 ***
- #   ---
- #   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
- # 
- # Residual standard error: 0.9137 on 340 degrees of freedom
- # (2 observations deleted due to missingness)
- # Multiple R-squared:  0.7561,	Adjusted R-squared:  0.7539 
- # F-statistic: 351.2 on 3 and 340 DF,  p-value: < 2.2e-16
-
 
  
 
@@ -754,40 +680,6 @@ same_day_lm <- lm(SQM ~ Moon_Magnitude + Category, data = consecutive_sqm)
 summary(same_day_lm)
 anova(same_day_lm)
 
-# Call:
-#   lm(formula = SQM ~ Moon_Magnitude + Category, data = consecutive_sqm)
-# 
-# Residuals:
-#   Min      1Q  Median      3Q     Max 
-# -3.1658 -0.2370  0.3738  0.5456  0.8940 
-# 
-# Coefficients:
-#   Estimate Std. Error t value Pr(>|t|)    
-# (Intercept)        18.00013    0.19960  90.183  < 2e-16 ***
-#   Moon_Magnitude      0.01014    0.02418   0.419 0.675662    
-# CategoryGMO         3.04018    0.18557  16.383  < 2e-16 ***
-#   CategoryRimrock    -1.61856    0.43926  -3.685 0.000317 ***
-#   CategoryRock_Slide -2.01094    0.31268  -6.431 1.51e-09 ***
-#   ---
-#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
-# 
-# Residual standard error: 0.8561 on 154 degrees of freedom
-# (32 observations deleted due to missingness)
-# Multiple R-squared:  0.723,	Adjusted R-squared:  0.7158 
-# F-statistic: 100.5 on 4 and 154 DF,  p-value: < 2.2e-16
-
-
-
-# > anova(same_day_lm)
-# Analysis of Variance Table
-# 
-# Response: SQM
-# Df  Sum Sq Mean Sq  F value  Pr(>F)    
-# Moon_Magnitude   1   3.378   3.378   4.6088 0.03337 *  
-#   Category         3 291.241  97.080 132.4527 < 2e-16 ***
-#   Residuals      154 112.873   0.733                     
-# ---
-#   Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
 
 
 # ==========================================
