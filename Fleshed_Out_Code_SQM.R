@@ -178,11 +178,11 @@ cat_avg <- aggregate(SQM ~ Category, data = clean_moon_data, FUN = mean)
 summary_stats <- clean_moon_data %>%
   group_by(Category) %>%
   summarize(
-    Mean_SQM = mean(SQM, na.rm = TRUE),
-    Variance = mean(variance, na.rm = TRUE),          # <--- Here is your variance
-    Standard_Error = sd(SQM, na.rm = TRUE) / sqrt(n())
+    Mean_SQM = mean(SQM, na.rm = TRUE, digits = 2),
+    Variance = mean(variance, na.rm = TRUE)
   )
 
+summary_stats
 
 
 names(all_moon_data)
@@ -237,31 +237,68 @@ summary(ks_nls)
 
 
 
-
+names(clean_moon_data)
 
 new_moon_data <- sqm_mean %>% filter(Moon_Phase_Name == "New Moon")
 
 summary(lm(SQM ~ true_dark_baseline, data = new_moon_data))
+
+summary(lm(SQM ~ above, data = clean_moon_data))
 
 
 summary(lm(SQM ~ hour_of_day, data = clean_moon_data))
 
 summary(lm(SQM ~ true_dark_baseline, data = clean_moon_data))
 
+summary(lm(SQM ~ Moon_Magnitude * Category, data = clean_moon_data))
 
+summary(lm(SQM ~ Category * (Moon_Magnitude + above), data = clean_moon_data))
+
+
+
+
+summary(lm(SQM ~ Moon_Magnitude + Category * above, data = clean_moon_data))
 
 # Satellite: 
 
 satellite_data <- aggregate(SQM ~ Category, data = clean_moon_data, FUN = mean)
 
 clean_cmu_data <- clean_moon_data |>
-  filter(Category == "CMU")
+  filter(Categsory == "CMU")
+
 
 cmu_satellite_data <- aggregate(SQM ~ Location, data = clean_moon_data, FUN = mean)
 
 
-library(ggplot2)
-library(ggplot2)
+cleaner_moon_data <- clean_moon_data |>
+  filter(Category != "Moab" & Category != "Connected_Lakes" & Category != "Grand_Mesa")
+
+# Scatter plot with model lines automatically overlaid
+ggplot(cleaner_moon_data, aes(x = Moon_Magnitude, y = SQM, color = Category)) +
+  # The scatter plot of your cleaned moon data
+  geom_point(alpha = 0.5, size = 2) + 
+  
+  # This single line automatically calculates and overlays the linear model (lm) lines 
+  # for your groups without needing the raw coefficients
+  geom_smooth(method = "lm", se = FALSE, linewidth = 1.2) +
+  
+  labs(
+    title = "Impact of Moon Phase on Sky Brightness",
+    x = "Moon Phase (%)",
+    y = "Sky Quality Meter (SQM)",
+    color = "Above/Below Category"
+  ) +
+  
+  theme_minimal(base_size = 16) + 
+  theme(
+    legend.position = "top",
+    plot.title = element_text(face = "bold")
+  )
+
+
+
+
+
 
 # Scatter plot of SQM vs Moon Phase, with model lines automatically overlaid
 ggplot(all_moon_data, aes(x = Moon_Magnitude, y = SQM, color = above_below)) +
@@ -377,7 +414,7 @@ ggplot(data = clean_moon_data,
 # Filter for New Moon first
 new_moon_data <- sqm_mean %>% filter(Moon_Cycle == "New_Moon")
 
-light_dome_lm <- lm(SQM ~ true_dark_baseline, data = new_moon_data)
+light_dome_lm <- lm(SQM ~ true_dark_baseline, data = clean_moon_data)
 summary(light_dome_lm)
 
 
